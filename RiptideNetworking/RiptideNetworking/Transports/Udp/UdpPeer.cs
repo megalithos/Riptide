@@ -63,7 +63,10 @@ namespace Riptide.Transports.Udp
         public void Poll()
         {
             Receive();
+            OnTick();
         }
+
+        protected virtual void OnTick() { }
 
         /// <summary>Opens the socket and starts the transport.</summary>
         /// <param name="listenAddress">The IP address to bind the socket to, if any.</param>

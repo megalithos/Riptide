@@ -1,0 +1,152 @@
+﻿// This file is provided under The MIT License as part of RiptideNetworking.
+// Copyright (c) Tom Weiland
+// For additional information please see the included LICENSE.md file or view it on GitHub:
+// https://github.com/RiptideNetworking/Riptide/blob/main/LICENSE.md
+
+using Riptide.DataStreaming;
+using Riptide.Utils;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Riptide.Collections
+{
+    internal class PendingBuffer
+    {
+        private byte[] buffer;
+        private byte[] chunkStates;
+        private int totalChunks;
+        private int numDeliveredChunks;
+        private int numOnFlightChunks;
+        private int numWaitingChunks;
+
+        private const int chunkStateBits = 2;
+        private int chunkStatesPerByte;
+        private int maxChunkSize;
+
+        public void Construct(byte[] buffer, int startIndex, int numBytes, int maxChunkSize)
+        {
+            ValidateArgs(buffer, startIndex, numBytes, maxChunkSize);
+
+            int numRequiredChunks = MyMath.IntCeilDiv(numBytes, maxChunkSize);
+
+            this.buffer = new byte[numBytes];
+            for (int i = 0; i < numBytes; i++)
+            {
+                this.buffer[i] = buffer[startIndex + i];
+            }
+
+            int chunkBitsRequired = chunkStateBits * numRequiredChunks;
+            int chunkStatesArraySize = MyMath.IntCeilDiv(chunkBitsRequired, 8);
+
+            Assert.True(chunkStateBits <= 8, "chunkStateBits <= 8");
+            Assert.True(chunkStateBits % 2 == 0, "chunkStateBits % 2 == 0");
+            this.chunkStates = new byte[chunkStatesArraySize];
+            totalChunks = numRequiredChunks;
+            chunkStatesPerByte = 8 / chunkStateBits;
+
+            for (int i = 0; i < totalChunks; i++)
+            {
+                SetChunkState(i, PendingChunkState.Waiting);
+            }
+
+            this.maxChunkSize = maxChunkSize;
+        }
+
+        private static void ValidateArgs(byte[] buffer, int startIndex, int numBytes, int maxChunkSize)
+        {
+            if (buffer == null)
+                throw new ArgumentNullException(nameof(buffer));
+            if (numBytes <= 0)
+                throw new ArgumentException(nameof(numBytes));
+            if (startIndex + numBytes > buffer.Length)
+                throw new ArgumentException($"{nameof(startIndex)}, {nameof(numBytes)}");
+            if (maxChunkSize <= 0)
+                throw new ArgumentException(nameof(maxChunkSize));
+            if (chunkStateBits < 0 || chunkStateBits > 8)
+                throw new ArgumentOutOfRangeException(nameof(chunkStateBits));
+        }
+
+        public PendingChunkState GetChunkState(int chunkIndex)
+        {
+            if (chunkIndex < 0 || chunkIndex >= totalChunks)
+                throw new ArgumentOutOfRangeException(nameof(chunkIndex));
+
+            GetIndexes(chunkIndex, out int byteIndex, out int chunkStateIndexWithinByte);
+            byte bvalue = chunkStates[byteIndex];
+            byte mask = GetChunkStateMask();
+
+            bvalue = (byte)(bvalue >> (chunkStateIndexWithinByte * chunkStateBits));
+            byte chunkState = (byte)(bvalue & mask);
+            return (PendingChunkState)(chunkState);
+        }
+
+        public void SetChunkState(int chunkIndex, PendingChunkState state)
+        {
+            if (chunkIndex < 0 || chunkIndex >= totalChunks)
+                throw new ArgumentOutOfRangeException(nameof(chunkIndex));
+
+            int byteIndex, chunkStateIndexWithinByte;
+            GetIndexes(chunkIndex, out byteIndex, out chunkStateIndexWithinByte);
+
+            byte bvalue = (byte)state;
+            byte mask = GetChunkStateMask();
+
+            byte originalByte = chunkStates[byteIndex];
+            originalByte &= (byte)(~(mask << (chunkStateIndexWithinByte * chunkStateBits))); // reset state we are about to set
+            chunkStates[byteIndex] = (byte)(originalByte | (bvalue << (chunkStateIndexWithinByte * chunkStateBits)));
+        }
+
+        public ArraySlice<byte> GetBuffer(int chunkIndex)
+        {
+            int byteOffset = maxChunkSize * chunkIndex;
+
+            int sliceLength = Math.Min(buffer.Length - byteOffset, maxChunkSize);
+            var slice = new ArraySlice<byte>(buffer, byteOffset, sliceLength);
+            return slice;
+        }
+
+        public int SeekNextWaitingIndex(int seekStartChunkIndex)
+        {
+            if (seekStartChunkIndex < 0 || seekStartChunkIndex >= totalChunks)
+                throw new ArgumentOutOfRangeException(nameof(seekStartChunkIndex));
+
+            for (int i = seekStartChunkIndex; i < totalChunks; i++)
+            {
+                PendingChunkState state = GetChunkState(i);
+                if (state == PendingChunkState.Waiting)
+                    return i;
+            }
+            return -1;
+        }
+
+        public bool IsDelivered()
+        {
+            for (int i = 0; i < totalChunks; i++)
+            {
+                PendingChunkState state = GetChunkState(i);
+                if (state != PendingChunkState.Delivered)
+                    return false;
+            }
+            return true;
+        }
+
+        public int NumTotalChunks() { return totalChunks; }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static byte GetChunkStateMask()
+        {
+            return (1 << chunkStateBits) - 1;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void GetIndexes(int chunkIndex, out int byteIndex, out int chunkStateIndexWithinByte)
+        {
+            byteIndex = chunkIndex / chunkStatesPerByte;
+            chunkStateIndexWithinByte = chunkIndex % chunkStatesPerByte;
+        }
+    }
+}

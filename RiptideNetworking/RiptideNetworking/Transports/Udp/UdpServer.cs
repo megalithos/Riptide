@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net;
 
 namespace Riptide.Transports.Udp
@@ -43,6 +44,27 @@ namespace Riptide.Transports.Udp
             connections = new Dictionary<IPEndPoint, Connection>();
 
             OpenSocket(listenAddress, port);
+        }
+
+        protected override void OnTick()
+        {
+            base.OnTick();
+
+            TickConnections();
+        }
+
+        private Stopwatch stopwatch = new Stopwatch();
+        private void TickConnections()
+        {
+            double dt = stopwatch.Elapsed.TotalSeconds;
+
+            foreach (var kvp in connections)
+            {
+                UdpConnection current = (UdpConnection)kvp.Value;
+                current.Tick(dt);
+            }
+
+            stopwatch.Restart();
         }
 
         /// <summary>Decides what to do with a connection attempt.</summary>

@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.30503.244
+# Visual Studio Version 17
+VisualStudioVersion = 17.7.34031.279
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RiptideNetworking", "RiptideNetworking\RiptideNetworking.csproj", "{CA9D3FCF-094B-4814-AC33-160F26B76336}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RiptideTests", "RiptideTests\RiptideTests.csproj", "{D5520A07-DEF6-4E52-BF15-F8CE7A5951C4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{CA9D3FCF-094B-4814-AC33-160F26B76336}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CA9D3FCF-094B-4814-AC33-160F26B76336}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CA9D3FCF-094B-4814-AC33-160F26B76336}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D5520A07-DEF6-4E52-BF15-F8CE7A5951C4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D5520A07-DEF6-4E52-BF15-F8CE7A5951C4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D5520A07-DEF6-4E52-BF15-F8CE7A5951C4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D5520A07-DEF6-4E52-BF15-F8CE7A5951C4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

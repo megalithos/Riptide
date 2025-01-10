@@ -4,6 +4,7 @@
 // https://github.com/RiptideNetworking/Riptide/blob/main/LICENSE.md
 
 using Riptide.Transports;
+using Riptide.Transports.Udp;
 using Riptide.Utils;
 using System;
 using System.Collections.Generic;
@@ -310,6 +311,7 @@ namespace Riptide
         /// <inheritdoc/>
         protected override void Handle(Message message, MessageHeader header, Connection connection)
         {
+            UdpConnection udpConnection = connection as UdpConnection;
             switch (header)
             {
                 // User messages
@@ -317,10 +319,17 @@ namespace Riptide
                 case MessageHeader.Reliable:
                     OnMessageReceived(message, connection);
                     break;
-
                 // Internal messages
                 case MessageHeader.Ack:
                     connection.HandleAck(message);
+                    break;
+                case MessageHeader.DataStreamChunk:
+                    Assert.True(udpConnection != null, "DataStreamChunk modes are only supported for UdpConnections");
+                    udpConnection.HandleDataStreamChunkReceived(message);
+                    break;
+                case MessageHeader.DataStreamChunkAck:
+                    Assert.True(udpConnection != null, "DataStreamChunk modes are only supported for UdpConnections");
+                    udpConnection.HandleDataStreamChunkAckReceived(message);
                     break;
                 case MessageHeader.Connect:
                     HandleConnect(connection, message);

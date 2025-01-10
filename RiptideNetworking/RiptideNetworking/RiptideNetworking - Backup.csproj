@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-	<TargetFramework>net462</TargetFramework>
+    <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
     <RunPostBuildEvent>OnBuildSuccess</RunPostBuildEvent>
     <RootNamespace>Riptide</RootNamespace>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
@@ -40,19 +40,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <UPMSourceFiles Remove="AssemblyInfo.cs" />
-    <UPMSourceFiles Remove="Collections\ArraySlice.cs" />
-    <UPMSourceFiles Remove="Collections\PendingBuffer.cs" />
-    <UPMSourceFiles Remove="Collections\PendingChunkState.cs" />
     <UPMSourceFiles Remove="Collections\RingBuffer.cs" />
-    <UPMSourceFiles Remove="Collections\SimpleArrayPool.cs" />
     <UPMSourceFiles Remove="DataStreaming\CongestionControlState.cs" />
     <UPMSourceFiles Remove="DataStreaming\ConnectionDataStreamStatus.cs" />
     <UPMSourceFiles Remove="DataStreaming\DataStreamSettings.cs" />
     <UPMSourceFiles Remove="DataStreaming\handle_t.cs" />
     <UPMSourceFiles Remove="DataStreaming\SendEnvelope.cs" />
     <UPMSourceFiles Remove="Utils\AssertUtil.cs" />
-    <UPMSourceFiles Remove="Utils\MyMath.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -5,13 +5,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace Riptide.DataStreaming
 {
-    internal struct SendEnvelope
+    internal interface IMessageCreator
     {
-        public uint Sequence { get; set; }
-        public int ByteSize { get; set; }
+        Message Create();
     }
 }

@@ -9,12 +9,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Riptide.Collections
+namespace Riptide.DataStreaming
 {
-    internal enum PendingChunkState
+    internal interface IMessageSender
     {
-        Waiting = 0,
-        OnFlight,
-        Delivered
+        void Send(Message message);
     }
 }

@@ -18,12 +18,14 @@ namespace Riptide.DataStreaming
         public ulong RecvAckMask { get; set; } = 0;
 
         /// <summary>
-        /// Total amount of bytes in flight.
+        /// Total amount of bytes in flight. Aka byte count
+        /// we have sent but we don't know whether they are dropped or received.
         /// </summary>
-        public ulong BytesInFlight { get; set; }
+        public long BytesInFlight { get; set; }
 
         /// <summary>
-        /// Congestion window in bytes.
+        /// In bytes. Maximum amount of bytes we may drop on the wire
+        /// without acknowledgement.
         /// </summary>
         public long Cwnd { get; set; }
 
@@ -31,31 +33,19 @@ namespace Riptide.DataStreaming
 
         public DataStreamCongestionControlState State { get; set; }
 
-        public RingBuffer<SendEnvelope> SendWindow { get; set; }
+        public RingBuffer<PayloadInfo> SendWindow { get; set; }
 
         /// <summary>
-        /// Buffers that have been sent but we do not know if the recipient has
-        /// received or dropped them.
+        /// Buffers that have not yet been fully delivered.
         /// </summary>
-        public Dictionary<long, ArraySlice<byte>> BuffersOnFlight = new Dictionary<long, ArraySlice<byte>>();
-
-        /// <summary>
-        /// Buffers waiting to be sent.
-        /// </summary>
-        public RingBuffer<ArraySlice<byte>> WaitingBuffers = new RingBuffer<ArraySlice<byte>>(1024);
+        public List<PendingBuffer> PendingBuffers { get; set; }
 
         public void ResetCwnd()
         {
             Cwnd = initialCwnd;
         }
 
-        /// <summary>
-        /// e.g. if initial cwnd is 1, will increase cwnd
-        /// by 1, if it is let's say MSS and we are using byte count,
-        /// will incrase by that. like if INITIAL_CWND is 1200, after first call to this
-        /// it will be 2400, after third call it'll be 3600 and so on
-        /// </summary>
-        public void IncreaseCwndByInitialCwnd()
+        public void IncrementCwnd()
         {
             Cwnd += initialCwnd;
         }
@@ -65,7 +55,7 @@ namespace Riptide.DataStreaming
             this.initialCwnd = DataStreamSettings.initialCwndSize;
             ResetCwnd();
 
-            SendWindow = new RingBuffer<SendEnvelope>(DataStreamSettings.maxSendWindowElements);
+            SendWindow = new RingBuffer<PayloadInfo>(DataStreamSettings.maxSendWindowElements);
         }
     }
 }

@@ -27,6 +27,8 @@ namespace Riptide.Collections
         private int chunkStatesPerByte;
         private int maxChunkSize;
 
+        public handle_t Handle;
+
         public void Construct(byte[] buffer, int startIndex, int numBytes, int maxChunkSize)
         {
             ValidateArgs(buffer, startIndex, numBytes, maxChunkSize);
@@ -34,10 +36,9 @@ namespace Riptide.Collections
             int numRequiredChunks = MyMath.IntCeilDiv(numBytes, maxChunkSize);
 
             this.buffer = new byte[numBytes];
-            for (int i = 0; i < numBytes; i++)
-            {
-                this.buffer[i] = buffer[startIndex + i];
-            }
+
+            // potentially slow for huge arrays (1MB+)
+            Buffer.BlockCopy(buffer, startIndex, this.buffer, 0, numBytes);
 
             int chunkBitsRequired = chunkStateBits * numRequiredChunks;
             int chunkStatesArraySize = MyMath.IntCeilDiv(chunkBitsRequired, 8);
@@ -47,11 +48,6 @@ namespace Riptide.Collections
             this.chunkStates = new byte[chunkStatesArraySize];
             totalChunks = numRequiredChunks;
             chunkStatesPerByte = 8 / chunkStateBits;
-
-            for (int i = 0; i < totalChunks; i++)
-            {
-                SetChunkState(i, PendingChunkState.Waiting);
-            }
 
             this.maxChunkSize = maxChunkSize;
         }

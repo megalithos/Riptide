@@ -9,12 +9,23 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Riptide.Collections
+namespace Riptide.DataStreaming
 {
-    internal enum PendingChunkState
+    // summary:
+    //   - construct buffers out of fragments
+    //   - invoke event on buffer received
+    //   - acknowledge received packets
+    internal class DataReceiver
     {
-        Waiting = 0,
-        OnFlight,
-        Delivered
+        public void Tick(double dt)
+        {
+        }
+
+        public void HandleChunkReceived(Message message)
+        {
+        }
+
+        public event Action<byte[]> OnReceived;
     }
+
 }

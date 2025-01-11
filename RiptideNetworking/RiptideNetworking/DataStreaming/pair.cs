@@ -9,12 +9,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Riptide.Collections
+namespace Riptide.DataStreaming
 {
-    internal enum PendingChunkState
+    internal struct PendingBufferChunkHandle
     {
-        Waiting = 0,
-        OnFlight,
-        Delivered
+        public handle_t Handle;
+        public int ChunkIndex;
     }
 }

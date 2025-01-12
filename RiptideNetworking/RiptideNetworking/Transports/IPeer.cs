@@ -35,7 +35,7 @@ namespace Riptide.Transports
         /// <summary>An internal reliable client disconnected message.</summary>
         ClientDisconnected,
 
-        DataStreamChunk,
+        DataStream,
 
         DataStreamChunkAck,
     }

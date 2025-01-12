@@ -53,6 +53,8 @@ namespace Riptide.DataStreaming
         public ConnectionDataStreamStatus()
         {
             this.initialCwnd = DataStreamSettings.initialCwndSize;
+
+            PendingBuffers = new List<PendingBuffer>();
             ResetCwnd();
 
             SendWindow = new RingBuffer<PayloadInfo>(DataStreamSettings.maxSendWindowElements);

@@ -323,7 +323,7 @@ namespace Riptide
                 case MessageHeader.Ack:
                     connection.HandleAck(message);
                     break;
-                case MessageHeader.DataStreamChunk:
+                case MessageHeader.DataStream:
                     Assert.True(udpConnection != null, "DataStreamChunk modes are only supported for UdpConnections");
                     udpConnection.HandleDataStreamChunkReceived(message);
                     break;

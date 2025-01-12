@@ -25,7 +25,7 @@ namespace RiptideTests
         public void ConstructWorks_1()
         {
             PendingBuffer buffer = NewBuffer();
-            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, 2, 4, 10);
+            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 },  10);
             Assert.AreEqual(1, buffer.NumTotalChunks());
 
             Assert.AreEqual(PendingChunkState.Waiting, buffer.GetChunkState(0));
@@ -35,7 +35,7 @@ namespace RiptideTests
         public void ConstructWorks_2()
         {
             PendingBuffer buffer = NewBuffer();
-            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, 0, 8, 4);
+            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 },  4);
             Assert.AreEqual(2, buffer.NumTotalChunks());
 
             Assert.AreEqual(PendingChunkState.Waiting, buffer.GetChunkState(0));
@@ -46,7 +46,7 @@ namespace RiptideTests
         public void ConstructWorks_3()
         {
             PendingBuffer buffer = NewBuffer();
-            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9 }, 0, 9, 4);
+            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9 },  4);
             Assert.AreEqual(3, buffer.NumTotalChunks());
 
             Assert.AreEqual(PendingChunkState.Waiting, buffer.GetChunkState(0));
@@ -58,7 +58,7 @@ namespace RiptideTests
         public void SetChunkStateThrowsForInvalidIndex_1()
         {
             PendingBuffer buffer = NewBuffer();
-            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, 0, 8, 4);
+            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 },  4);
 
             Assert.Throws<ArgumentOutOfRangeException>(() => { buffer.SetChunkState(2, PendingChunkState.OnFlight); });
             Assert.Throws<ArgumentOutOfRangeException>(() => { buffer.SetChunkState(-1, PendingChunkState.OnFlight); });
@@ -68,7 +68,7 @@ namespace RiptideTests
         public void SetChunkStateDoesNotAffectOtherChunkStates()
         {
             PendingBuffer buffer = NewBuffer();
-            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }, 0, 12, 4);
+            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 },  4);
 
             Assert.AreEqual(PendingChunkState.Waiting, buffer.GetChunkState(0));
             Assert.AreEqual(PendingChunkState.Waiting, buffer.GetChunkState(1));
@@ -103,35 +103,14 @@ namespace RiptideTests
         public void ConstructWorksThrowsWithInvalidArguments_1()
         {
             PendingBuffer buffer = NewBuffer();
-            Assert.Throws<ArgumentNullException>(() => { buffer.Construct(null, 0, 8, 4); });
-        }
-
-        [Test]
-        public void ConstructWorksThrowsWithInvalidArguments_2()
-        {
-            PendingBuffer buffer = NewBuffer();
-            Assert.Throws<ArgumentException>(() => { buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, 0, 9, 4); });
-        }
-
-        [Test]
-        public void ConstructWorksThrowsWithInvalidArguments_3()
-        {
-            PendingBuffer buffer = NewBuffer();
-            Assert.Throws<ArgumentException>(() => { buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, 1, 8, 4); });
-        }
-
-        [Test]
-        public void ConstructWorksThrowsWithInvalidArguments_4()
-        {
-            PendingBuffer buffer = NewBuffer();
-            Assert.Throws<ArgumentException>(() => { buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, 0, 0, 4); });
+            Assert.Throws<ArgumentNullException>(() => { buffer.Construct(null, 4); });
         }
 
         [Test]
         public void GetChunkStateThrowsArgumentOutOfRangeException_IfIndexIsOutOfRange()
         {
             PendingBuffer buffer = NewBuffer();
-            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, 2, 4, 10);
+            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 },  10);
 
             Assert.Throws<ArgumentOutOfRangeException>(() => buffer.GetChunkState(-1));
             Assert.Throws<ArgumentOutOfRangeException>(() => buffer.GetChunkState(1));
@@ -141,7 +120,7 @@ namespace RiptideTests
         public void SeekNextWaitingIndexWorks_1()
         {
             PendingBuffer buffer = NewBuffer();
-            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }, 1, 10, 3);
+            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 },  3);
             // buffer: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
             // chunk 1: [2, 3, 4]
             // chunk 2: [5, 6, 7]
@@ -181,7 +160,7 @@ namespace RiptideTests
         public void SeekNextWaitingIndexThrowsOnInvalidChunkIndex()
         {
             PendingBuffer buffer = NewBuffer();
-            buffer.Construct(new byte[] { 1, 2, 3, 4 }, 0, 4, 2);
+            buffer.Construct(new byte[] { 1, 2, 3, 4 },  2);
             Assert.AreEqual(2, buffer.NumTotalChunks());
             Assert.Throws<ArgumentOutOfRangeException>(() => buffer.SeekNextWaitingIndex(-1));
             Assert.Throws<ArgumentOutOfRangeException>(() => buffer.SeekNextWaitingIndex(2));
@@ -191,41 +170,38 @@ namespace RiptideTests
         public void GetArraySliceWorks_1()
         {
             PendingBuffer buffer = NewBuffer();
-            // buffer: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-            // chunk 1: [2, 3, 4]
-            // chunk 2: [5, 6, 7]
-            // chunk 3: [8, 9, 10]
-            // chunk 4: [11]
-            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }, 1, 10, 3);
+            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 },  3);
 
             var arraySlice = buffer.GetBuffer(0);
             Assert.AreEqual(arraySlice.Length, 3);
-            Assert.AreEqual(2, arraySlice[0]);
-            Assert.AreEqual(3, arraySlice[1]);
-            Assert.AreEqual(4, arraySlice[2]);
+            Assert.AreEqual(1, arraySlice[0]);
+            Assert.AreEqual(2, arraySlice[1]);
+            Assert.AreEqual(3, arraySlice[2]);
 
             arraySlice = buffer.GetBuffer(1);
             Assert.AreEqual(arraySlice.Length, 3);
-            Assert.AreEqual(5, arraySlice[0]);
-            Assert.AreEqual(6, arraySlice[1]);
-            Assert.AreEqual(7, arraySlice[2]);
+            Assert.AreEqual(4, arraySlice[0]);
+            Assert.AreEqual(5, arraySlice[1]);
+            Assert.AreEqual(6, arraySlice[2]);
 
             arraySlice = buffer.GetBuffer(2);
             Assert.AreEqual(arraySlice.Length, 3);
-            Assert.AreEqual(8, arraySlice[0]);
-            Assert.AreEqual(9, arraySlice[1]);
-            Assert.AreEqual(10, arraySlice[2]);
+            Assert.AreEqual(7, arraySlice[0]);
+            Assert.AreEqual(8, arraySlice[1]);
+            Assert.AreEqual(9, arraySlice[2]);
 
             arraySlice = buffer.GetBuffer(3);
-            Assert.AreEqual(1, arraySlice.Length);
-            Assert.AreEqual(11, arraySlice[0]);
+            Assert.AreEqual(3, arraySlice.Length);
+            Assert.AreEqual(10, arraySlice[0]);
+            Assert.AreEqual(11, arraySlice[1]);
+            Assert.AreEqual(12, arraySlice[2]);
         }
 
         [Test]
         public void IsDeliveredWorks_1()
         {
             PendingBuffer buffer = NewBuffer();
-            buffer.Construct(new byte[] { 1, 2, 3, 4 }, 0, 4, 2);
+            buffer.Construct(new byte[] { 1, 2, 3, 4 },  2);
             Assert.AreEqual(2, buffer.NumTotalChunks());
             Assert.AreEqual(false, buffer.IsDelivered());
 
@@ -245,6 +221,16 @@ namespace RiptideTests
             buffer.SetChunkState(1, PendingChunkState.Delivered);
             Assert.AreEqual(true, buffer.IsDelivered());
         }
+
+        [Test]
+        public void GetLastChunkIndexWorks()
+        {
+            PendingBuffer buffer = NewBuffer();
+            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 },  3);
+            Assert.AreEqual(4, buffer.NumTotalChunks());
+            Assert.AreEqual(3, buffer.GetLastChunkIndex());
+        }
+
 
         private PendingBuffer NewBuffer() => new PendingBuffer();
     }

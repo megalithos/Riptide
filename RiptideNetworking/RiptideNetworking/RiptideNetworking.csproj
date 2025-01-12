@@ -51,6 +51,7 @@
     <UPMSourceFiles Remove="DataStreaming\DataReceiver.cs" />
     <UPMSourceFiles Remove="DataStreaming\DataStreamer.cs" />
     <UPMSourceFiles Remove="DataStreaming\DataStreamSettings.cs" />
+    <UPMSourceFiles Remove="DataStreaming\FragmentAssembler.cs" />
     <UPMSourceFiles Remove="DataStreaming\handle_t.cs" />
     <UPMSourceFiles Remove="DataStreaming\IConnectionDSStatusProvider.cs" />
     <UPMSourceFiles Remove="DataStreaming\IMessageCreator.cs" />

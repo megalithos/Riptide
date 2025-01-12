@@ -22,6 +22,8 @@ namespace Riptide
         Unreliable = MessageHeader.Unreliable,
         /// <summary>Guarantees delivery but not order.</summary>
         Reliable = MessageHeader.Reliable,
+
+        DataStream = MessageHeader.DataStream
     }
 
     /// <summary>Provides functionality for converting data to bytes and vice versa.</summary>

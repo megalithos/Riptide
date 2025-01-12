@@ -39,6 +39,7 @@ namespace Riptide.Transports.Udp
         /// Maximum amount of bytes we can add to a message.
         /// </summary>
         private readonly int maxPayloadSize = Message.MaxPayloadSize - MyMath.IntCeilDiv(DataStreamer.numHeaderBits, 8);
+        private readonly int maxHeaderSize = Message.MaxHeaderSize + MyMath.IntCeilDiv(DataStreamer.numHeaderBits, 8);
 
         /// <summary>Initializes the connection.</summary>
         /// <param name="remoteEndPoint">The endpoint representing the other end of the connection.</param>
@@ -48,7 +49,7 @@ namespace Riptide.Transports.Udp
             RemoteEndPoint = remoteEndPoint;
             this.peer = peer;
             dataStreamStatus = new ConnectionDataStreamStatus();
-            dataStreamer = new DataStreamer(this, this, this, maxPayloadSize);
+            dataStreamer = new DataStreamer(this, this, this, maxPayloadSize, maxHeaderSize);
         }
 
         public handle_t BeginStream(int channel, byte[] buffer, int startIndex, int numBytes)
@@ -61,7 +62,7 @@ namespace Riptide.Transports.Udp
                 throw new ArgumentOutOfRangeException(nameof(numBytes), "Number of bytes exceeds buffer length.");
 
             PendingBuffer pendingBuffer = new PendingBuffer();
-            pendingBuffer.Construct(buffer, startIndex, numBytes, maxPayloadSize);
+            pendingBuffer.Construct(buffer, maxPayloadSize);
             pendingBuffer.Handle = nextHandle;
             nextHandle++;
 
@@ -119,12 +120,12 @@ namespace Riptide.Transports.Udp
 
         public Message Create()
         {
-            return Message.Create();
+            return Message.Create(MessageSendMode.DataStream);
         }
 
         public void Send(Message message)
         {
-            Send(message);
+            base.Send(message);
         }
 
         ConnectionDataStreamStatus IConnectionDSStatusProvider.GetConnectionDSStatus()

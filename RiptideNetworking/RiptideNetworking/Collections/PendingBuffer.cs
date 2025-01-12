@@ -29,16 +29,13 @@ namespace Riptide.Collections
 
         public handle_t Handle;
 
-        public void Construct(byte[] buffer, int startIndex, int numBytes, int maxChunkSize)
+        public void Construct(byte[] buffer, int maxChunkSize)
         {
-            ValidateArgs(buffer, startIndex, numBytes, maxChunkSize);
+            ValidateArgs(buffer, maxChunkSize);
 
-            int numRequiredChunks = MyMath.IntCeilDiv(numBytes, maxChunkSize);
+            int numRequiredChunks = MyMath.IntCeilDiv(buffer.Length, maxChunkSize);
 
-            this.buffer = new byte[numBytes];
-
-            // potentially slow for huge arrays (1MB+)
-            Buffer.BlockCopy(buffer, startIndex, this.buffer, 0, numBytes);
+            this.buffer = buffer;
 
             int chunkBitsRequired = chunkStateBits * numRequiredChunks;
             int chunkStatesArraySize = MyMath.IntCeilDiv(chunkBitsRequired, 8);
@@ -52,14 +49,10 @@ namespace Riptide.Collections
             this.maxChunkSize = maxChunkSize;
         }
 
-        private static void ValidateArgs(byte[] buffer, int startIndex, int numBytes, int maxChunkSize)
+        private static void ValidateArgs(byte[] buffer, int maxChunkSize)
         {
             if (buffer == null)
                 throw new ArgumentNullException(nameof(buffer));
-            if (numBytes <= 0)
-                throw new ArgumentException(nameof(numBytes));
-            if (startIndex + numBytes > buffer.Length)
-                throw new ArgumentException($"{nameof(startIndex)}, {nameof(numBytes)}");
             if (maxChunkSize <= 0)
                 throw new ArgumentException(nameof(maxChunkSize));
             if (chunkStateBits < 0 || chunkStateBits > 8)
@@ -117,6 +110,11 @@ namespace Riptide.Collections
                     return i;
             }
             return -1;
+        }
+
+        public int GetLastChunkIndex()
+        {
+            return totalChunks - 1;
         }
 
         public bool IsDelivered()

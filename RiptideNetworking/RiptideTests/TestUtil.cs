@@ -9,6 +9,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using NUnit.Framework;
+using Riptide.Collections;
+using Riptide.Utils;
+using Assert = NUnit.Framework.Assert;
 
 namespace RiptideTests
 {
@@ -36,6 +39,30 @@ namespace RiptideTests
             {
                 Assert.IsTrue(expected[i] == b[i], $"expected value {expected[i]} but received value {b[i]} at index #{i}");
             }
+        }
+
+        public static void AssertDoublesEqualApprox(double expected, double actual, double epsilon)
+        {
+            bool equal = MyMath.equal_approx(expected, actual, epsilon);
+            if (!equal)
+                Assert.Fail($"Double equality test failed. Expected: {expected}, actual: {actual}, epsilon: {epsilon}");
+        }
+
+        public static PendingBuffer CreateBuffer(int size, long maxPayloadSize, out byte[] buffer)
+        {
+            int len = size - 4;
+            buffer = TestUtil.GenerateRandomByteArray(size);
+
+            // write len of payload
+            buffer[0] = (byte)(len & 0xFF);
+            buffer[1] = (byte)(len >> 8 & 0xFF);
+            buffer[2] = (byte)(len >> 16 & 0xFF);
+            buffer[3] = (byte)(len >> 24 & 0xFF);
+
+            PendingBuffer pb = new PendingBuffer();
+            pb.Construct(buffer, (int)maxPayloadSize);
+
+            return pb;
         }
     }
 }

@@ -47,6 +47,7 @@
     <UPMSourceFiles Remove="Collections\PendingChunkState.cs" />
     <UPMSourceFiles Remove="Collections\RingBuffer.cs" />
     <UPMSourceFiles Remove="Collections\SimpleArrayPool.cs" />
+    <UPMSourceFiles Remove="DataStreaming\ChunkPtr.cs" />
     <UPMSourceFiles Remove="DataStreaming\CongestionControlState.cs" />
     <UPMSourceFiles Remove="DataStreaming\ConnectionDataStreamStatus.cs" />
     <UPMSourceFiles Remove="DataStreaming\DataReceiver.cs" />
@@ -57,7 +58,7 @@
     <UPMSourceFiles Remove="DataStreaming\IConnectionDSStatusProvider.cs" />
     <UPMSourceFiles Remove="DataStreaming\IMessageCreator.cs" />
     <UPMSourceFiles Remove="DataStreaming\IMessageSender.cs" />
-    <UPMSourceFiles Remove="DataStreaming\pair.cs" />
+    <UPMSourceFiles Remove="DataStreaming\IReceiverRTTProvider.cs" />
     <UPMSourceFiles Remove="DataStreaming\PayloadInfo.cs" />
     <UPMSourceFiles Remove="Utils\AssertUtil.cs" />
     <UPMSourceFiles Remove="Utils\MyMath.cs" />

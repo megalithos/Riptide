@@ -11,9 +11,11 @@ using System.Threading.Tasks;
 
 namespace Riptide.DataStreaming
 {
-    internal struct PendingBufferChunkHandle
+    internal interface IReceiverRTTProvider
     {
-        public handle_t Handle;
-        public int ChunkIndex;
+        /// <summary>
+        /// Returns in milliseconds.
+        /// </summary>
+        int get_rtt_ms();
     }
 }

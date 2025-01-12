@@ -22,6 +22,13 @@ namespace Riptide.DataStreaming
         /// Contains handles to chunks that were included
         /// in the payload.
         /// </summary>
-        public List<PendingBufferChunkHandle> Buffers;
+        public List<ChunkPtr> Buffers;
+
+        public PayloadInfo(uint sequence, int size, List<ChunkPtr> buffers)
+        {
+            Sequence = sequence;
+            Size = size;
+            Buffers = buffers;
+        }
     }
 }

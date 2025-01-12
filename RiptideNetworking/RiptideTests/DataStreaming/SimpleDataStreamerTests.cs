@@ -17,25 +17,43 @@ using System.Security.Cryptography;
 using Assert = NUnit.Framework.Assert;
 using Riptide.Collections;
 
-namespace RiptideTests
+namespace RiptideTests.DataStreaming
 {
-    internal class SimpleDataStreamerTests : IConnectionDSStatusProvider, IMessageCreator, IMessageSender
+    internal class SimpleDataStreamerTests : IConnectionDSStatusProvider, IReceiverRTTProvider
     {
         private ConnectionDataStreamStatus status;
         private DataStreamer streamer;
         private DataReceiver receiver;
         private const int maxPayloadSize = 1200;
         private byte[] recvBytes;
+        private DataStreamTestMessageSender receiver2streamer_sender;
+        private DataStreamTestMessageSender streamer2receiver_sender;
+        private DataStreamTestMessageCreator messageCreator;
 
         [SetUp]
         public void Setup()
         {
             status = new ConnectionDataStreamStatus(1_000_000, 1_000_000);
-            streamer = new DataStreamer(this, this, this, maxPayloadSize, Message.MaxHeaderSize + MyMath.IntCeilDiv(DataStreamer.numHeaderBits, 8));
-            receiver = new DataReceiver(maxPayloadSize);
+
+            streamer2receiver_sender = new DataStreamTestMessageSender((message) =>
+            {
+                receiver.HandleChunkReceived(message);
+                message.Release();
+            });
+
+            messageCreator = new DataStreamTestMessageCreator();
+
+            streamer = new DataStreamer(this, messageCreator, streamer2receiver_sender, this, maxPayloadSize, Message.MaxHeaderSize + MyMath.IntCeilDiv(DataStreamer.numHeaderBits, 8));
+
+            receiver2streamer_sender = new DataStreamTestMessageSender((message) =>
+            {
+                streamer.HandleChunkAck(message);
+                message.Release();
+            });
+            receiver = new DataReceiver(maxPayloadSize, receiver2streamer_sender, messageCreator);
 
             recvBytes = null;
-            receiver.OnReceived += (ArraySlice<byte> bytes) =>
+            receiver.OnReceived += (bytes) =>
             {
                 recvBytes = new byte[bytes.Length];
 
@@ -51,9 +69,9 @@ namespace RiptideTests
 
             // write len of payload
             buffer[0] = (byte)(len & 0xFF);
-            buffer[1] = (byte)((len >> 8) & 0xFF);
-            buffer[2] = (byte)((len >> 16) & 0xFF);
-            buffer[3] = (byte)((len >> 24) & 0xFF);
+            buffer[1] = (byte)(len >> 8 & 0xFF);
+            buffer[2] = (byte)(len >> 16 & 0xFF);
+            buffer[3] = (byte)(len >> 24 & 0xFF);
 
             buffer[0 + 4] = 0xDE;
             buffer[1 + 4] = 0xAD;
@@ -82,9 +100,9 @@ namespace RiptideTests
 
             // write len of payload
             buffer[0] = (byte)(len & 0xFF);
-            buffer[1] = (byte)((len >> 8) & 0xFF);
-            buffer[2] = (byte)((len >> 16) & 0xFF);
-            buffer[3] = (byte)((len >> 24) & 0xFF);
+            buffer[1] = (byte)(len >> 8 & 0xFF);
+            buffer[2] = (byte)(len >> 16 & 0xFF);
+            buffer[3] = (byte)(len >> 24 & 0xFF);
 
             buffer[0 + 4] = 0xDE;
             buffer[1 + 4] = 0xAD;
@@ -114,9 +132,9 @@ namespace RiptideTests
 
             // write len of payload
             buffer[0] = (byte)(len & 0xFF);
-            buffer[1] = (byte)((len >> 8) & 0xFF);
-            buffer[2] = (byte)((len >> 16) & 0xFF);
-            buffer[3] = (byte)((len >> 24) & 0xFF);
+            buffer[1] = (byte)(len >> 8 & 0xFF);
+            buffer[2] = (byte)(len >> 16 & 0xFF);
+            buffer[3] = (byte)(len >> 24 & 0xFF);
 
             buffer[0 + 4] = 0xDE;
             buffer[1 + 4] = 0xAD;
@@ -137,20 +155,14 @@ namespace RiptideTests
             TestUtil.AssertByteArraysEqual(buffer, recvBytes);
         }
 
-        public Message Create()
-        {
-            return Message.Create();
-        }
-
         public ConnectionDataStreamStatus GetConnectionDSStatus()
         {
             return status;
         }
 
-        public void Send(Message message)
+        public int get_rtt_ms()
         {
-            receiver.HandleChunkReceived(message);
-            message.Release();
+            return 100;
         }
     }
 }

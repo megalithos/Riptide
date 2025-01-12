@@ -29,5 +29,10 @@ namespace Riptide.Utils
             }
             return result;
         }
+
+        public static bool equal_approx(double a, double b, double epsilon)
+        {
+            return Math.Abs(a - b) < epsilon;
+        }
     }
 }

@@ -3,15 +3,21 @@
 // For additional information please see the included LICENSE.md file or view it on GitHub:
 // https://github.com/RiptideNetworking/Riptide/blob/main/LICENSE.md
 
+using Riptide;
+using Riptide.DataStreaming;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 
-namespace Riptide.DataStreaming
+namespace RiptideTests.DataStreaming
 {
-    internal enum CongestionControlState
+    internal class DataStreamTestMessageCreator : IMessageCreator
     {
-        SlowStart = 1,
-        CongestionAvoidance
+        public Message Create()
+        {
+            return Message.Create();
+        }
     }
 }

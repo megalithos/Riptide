@@ -19,5 +19,6 @@ namespace Riptide.DataStreaming
         public const int maxSendWindowElements = 1024;
 
         public const int maxCwnd = 1024 * 1024; // ~1MB
+        public const int ackMaskBitCount = sizeof(ulong) * 8;
     }
 }

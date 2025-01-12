@@ -12,11 +12,6 @@ namespace Riptide.DataStreaming
 {
     internal class ConnectionDataStreamStatus
     {
-        public float CwndIncreaseTimer { get; set; }
-        public uint SequenceId { get; set; } = 0;
-        public uint RecvSequence { get; set; } = 0;
-        public ulong RecvAckMask { get; set; } = 0;
-
         /// <summary>
         /// Total amount of bytes in flight. Aka byte count
         /// we have sent but we don't know whether they are dropped or received.
@@ -26,6 +21,11 @@ namespace Riptide.DataStreaming
         public long SlowStartThreshold { get; set; }
 
         /// <summary>
+        /// Timer used in congestion avoidance phase.
+        /// </summary>
+        public float CwndIncrementTimer { get; set; }
+
+        /// <summary>
         /// In bytes. Maximum amount of bytes we may drop on the wire
         /// without acknowledgement.
         /// </summary>
@@ -33,7 +33,7 @@ namespace Riptide.DataStreaming
 
         private readonly long initialCwnd;
 
-        public DataStreamCongestionControlState State { get; set; }
+        public CongestionControlState State { get; set; }
 
         public RingBuffer<PayloadInfo> SendWindow { get; set; }
 
@@ -62,6 +62,7 @@ namespace Riptide.DataStreaming
             SendWindow = new RingBuffer<PayloadInfo>(DataStreamSettings.maxSendWindowElements);
 
             this.SlowStartThreshold = initialSlowStartThreshold;
+            this.State = CongestionControlState.SlowStart;
         }
     }
 }

@@ -45,12 +45,14 @@ namespace Riptide.DataStreaming
         private readonly IConnectionDSStatusProvider _connectionDataStreamStatus;
         private readonly IMessageCreator _messageCreator;
         private readonly IMessageSender _messageSender;
+        private readonly IReceiverRTTProvider receiverRTTProvider;
         private readonly int maxPayloadSize;
         private readonly int maxHeaderSize;
 
         public DataStreamer(IConnectionDSStatusProvider connectionDataStreamStatusProvider,
                             IMessageCreator messageCreator,
                             IMessageSender messageSender,
+                            IReceiverRTTProvider receiverRTTProvider,
                             int maxPayloadSize,
                             int maxHeaderSize)
         {
@@ -59,10 +61,13 @@ namespace Riptide.DataStreaming
             _messageSender = messageSender;
             this.maxPayloadSize = maxPayloadSize;
             this.maxHeaderSize = maxHeaderSize;
+            this.receiverRTTProvider = receiverRTTProvider;
         }
 
+        private static List<ChunkPtr> chunkIndices = new List<ChunkPtr>();
         public void Tick(double dt)
         {
+            chunkIndices.Clear();
             ConnectionDataStreamStatus dataStreamStatus = _connectionDataStreamStatus.GetConnectionDSStatus();
 
             // calculate how many bytes we may send
@@ -75,48 +80,73 @@ namespace Riptide.DataStreaming
             Message message = null;
             int numChunksWriteBit = 0;
 
-            // stages:
-            // 1) try send each chunk in their own packet
-            // 2) pack any last (smaller) chunks in the same packet and send, if possible
-            for (int i = 0; i < dataStreamStatus.PendingBuffers.Count; i++)
+            if (maxSendableBytes >= maxPayloadSize)
             {
-                if (message == null)
+                // stages:
+                // 1) try send each chunk in their own packet
+                // 2) pack any last (smaller) chunks in the same packet and send, if possible
+                int writec = 0;
+                for (int i = 0; i < dataStreamStatus.PendingBuffers.Count; i++)
                 {
-                    message = InitNewMessage(out numChunksWriteBit);
-                }
+                    PendingBuffer current = dataStreamStatus.PendingBuffers[i];
 
-                PendingBuffer current = dataStreamStatus.PendingBuffers[i];
+                    int totalChunks = current.NumTotalChunks();
+                    while (true) // iterate chunks
+                    {
+                        if (message == null)
+                        {
+                            message = InitNewMessage(out numChunksWriteBit);
+                        }
 
-                int index = current.SeekNextWaitingIndex(0);
+                        int index = current.SeekNextWaitingIndex(0);
 
-                // could not find a chunk that we could send
-                if (index < 0)
-                    continue;
+                        // could not find a chunk that we could send
+                        if (index < 0)
+                            break;
 
-                ArraySlice<byte> buffer = current.GetBuffer(index);
-                bool canWrite = CanSerializeBufferInBits(buffer, message.UnwrittenBits);
-                Assert.True(canWrite, "can write");
+                        ArraySlice<byte> buffer = current.GetBuffer(index);
+                        bool canWrite = CanSerializeBufferInBits(buffer, Math.Min(sendableBits, message.UnwrittenBits));
+                        if (!canWrite)
+                            break;
 
-                // only 1 chunk in this message
-                message.SetBits(1, numChunksBits, numChunksWriteBit);
+                        // only 1 chunk in this message
+                        message.SetBits(1, numChunksBits, numChunksWriteBit);
 
-                // write fragment header
-                message.AddBits((uint)(int)current.Handle, fragmentHandleBits);
-                message.AddBits((uint)current.NumTotalChunks(), numFragmentsBits);
-                message.AddBits((uint)index, fragmentIndexBits);
+                        // write fragment header
+                        message.AddBits((uint)(int)current.Handle, fragmentHandleBits);
+                        message.AddBits((uint)current.NumTotalChunks(), numFragmentsBits);
+                        message.AddBits((uint)index, fragmentIndexBits);
 
-                message.AddVarULong((ulong)buffer.Length);
-                message.AddBytes(buffer.Array, buffer.StartIndex, buffer.Length, includeLength: false);
-                sendableBits -= message.WrittenBits;
+                        message.AddVarULong((ulong)buffer.Length);
+                        message.AddBytes(buffer.Array, buffer.StartIndex, buffer.Length, includeLength: false);
+                        sendableBits -= message.WrittenBits;
+                        dataStreamStatus.BytesInFlight += message.WrittenBits / 8;
 
-                _messageSender.Send(message);
-                sequence++;
-                message = null;
+                        _messageSender.Send(message);
+                        writec++;
 
-                if (sendableBits < maxHeaderSize * 8 + 8)
-                {
-                    // can not write even a single header + one byte
-                    return;
+                        current.SetChunkState(index, PendingChunkState.OnFlight);
+
+                        if (dataStreamStatus.SendWindow.IsFull)
+                        {
+                            dataStreamStatus.SendWindow.Resize(dataStreamStatus.SendWindow.Capacity * 2);
+                        }
+
+                        dataStreamStatus.SendWindow.Push(new PayloadInfo(
+                            sequence,
+                            message.WrittenBits / 8,
+                            new List<ChunkPtr> { new ChunkPtr(current, index) }
+                        ));
+
+                        sequence++;
+                        message = null;
+
+                        if (sendableBits < maxHeaderSize * 8 + 8)
+                        {
+                            // can not write even a single header + one byte
+                            return;
+                        }
+                    }
                 }
             }
 
@@ -138,7 +168,7 @@ namespace Riptide.DataStreaming
                 }
 
                 ArraySlice<byte> buffer = current.GetBuffer(lastChunkIndex);
-                bool canWrite = CanSerializeBufferInBits(buffer, message.UnwrittenBits);
+                bool canWrite = CanSerializeBufferInBits(buffer, Math.Min(sendableBits, message.UnwrittenBits));
 
                 if (!canWrite)
                     continue;
@@ -151,13 +181,15 @@ namespace Riptide.DataStreaming
                 message.AddBytes(buffer.Array, buffer.StartIndex, buffer.Length);
                 sendableBits -= message.WrittenBits;
 
+                chunkIndices.Add(new ChunkPtr(current, lastChunkIndex));
+
                 addedChunks++;
 
                 int minExtraFragmentBits = fragmentIndexBits + numFragmentsBits + 8;
                 if (message.UnwrittenBits < minExtraFragmentBits)
                 {
                     // message is full
-                    FinalizeSendMultipleChunkMessage(message, numChunksWriteBit, addedChunks);
+                    FinalizeSendMultipleChunkMessage(message, numChunksWriteBit, addedChunks, dataStreamStatus);
                     message = null;
                 }
 
@@ -170,16 +202,48 @@ namespace Riptide.DataStreaming
 
             if (message != null && addedChunks > 0)
             {
-                FinalizeSendMultipleChunkMessage(message, numChunksWriteBit, addedChunks);
+                FinalizeSendMultipleChunkMessage(message, numChunksWriteBit, addedChunks, dataStreamStatus);
                 message = null;
+            }
+
+            dataStreamStatus.CwndIncrementTimer -= (float)dt;
+            if (dataStreamStatus.CwndIncrementTimer < 0f)
+                dataStreamStatus.CwndIncrementTimer = 0f;
+
+            if (Math.Abs(dataStreamStatus.CwndIncrementTimer) <= 0.0001f &&
+                dataStreamStatus.State == CongestionControlState.CongestionAvoidance &&
+                receiverRTTProvider.get_rtt_ms() > 0)
+            {
+                dataStreamStatus.IncrementCwnd();
+                dataStreamStatus.CwndIncrementTimer = receiverRTTProvider.get_rtt_ms() / 1000f;
             }
         }
 
-        private void FinalizeSendMultipleChunkMessage(Message message, int numChunksWriteBit, int addedChunks)
+        private void FinalizeSendMultipleChunkMessage(Message message, int numChunksWriteBit, int addedChunks, ConnectionDataStreamStatus dataStreamStatus)
         {
             message.SetBits((uint)addedChunks, numChunksBits, numChunksWriteBit);
             _messageSender.Send(message);
+            dataStreamStatus.BytesInFlight += message.WrittenBits / 8;
             sequence++;
+
+            List<ChunkPtr> containedChunkPtrs = new List<ChunkPtr>(chunkIndices.Count);
+
+            foreach (ChunkPtr ptr in chunkIndices)
+            {
+                PendingBuffer buffer = ptr.Buffer;
+                Assert.True(buffer != null, "buffer != null");
+
+                buffer.SetChunkState(ptr.ChunkIndex, PendingChunkState.OnFlight);
+                containedChunkPtrs.Add(ptr);
+            }
+
+            dataStreamStatus.SendWindow.Push(new PayloadInfo(
+                sequence,
+                message.WrittenBits / 8,
+                containedChunkPtrs
+            ));
+
+            chunkIndices.Clear();
         }
 
         private Message InitNewMessage(out int numChunksWriteBit)
@@ -201,9 +265,99 @@ namespace Riptide.DataStreaming
             return buffsizeWithFragmentHeaderInBits <= bits;
         }
 
+        private uint clientRecvSequence;
         public void HandleChunkAck(Message message)
         {
+            uint sequence = message.GetUInt();
+            ulong ackMask = message.GetULong();
+
+            // reject acks for duplicate & out of order
+            if (clientRecvSequence >= sequence)
+            {
+                return;
+            }
+
+            clientRecvSequence = sequence;
+
+            ConnectionDataStreamStatus streamStatus = _connectionDataStreamStatus.GetConnectionDSStatus();
+
+            while (streamStatus.SendWindow.Count > 0)
+            {
+                var envelope = streamStatus.SendWindow.Peek();
+
+                int distance = (int)(envelope.Sequence - clientRecvSequence);
+
+                if (distance > 0)
+                {
+                    break;
+                }
+
+                streamStatus.BytesInFlight -= envelope.Size;
+
+                Assert.True(streamStatus.BytesInFlight >= 0, "streamStatus.BytesInFlight >= 0");
+
+                // distance == 0 or less, that means
+                // we have delivered enveloper or it has been lost
+
+                streamStatus.SendWindow.Pop();
+
+                bool packetLost;
+                if ((ackMask & (1UL << -distance)) == 0UL
+                    || distance < -DataStreamSettings.ackMaskBitCount)
+                {
+                    packetLost = true;
+
+                    if (streamStatus.State != CongestionControlState.SlowStart)
+                    {
+                        streamStatus.SlowStartThreshold = streamStatus.Cwnd / 2;
+                        streamStatus.ResetCwnd();
+                        streamStatus.State = CongestionControlState.SlowStart;
+                    }
+                }
+                else
+                {
+                    packetLost = false;
+                    if (streamStatus.State == CongestionControlState.SlowStart)
+                    {
+                        streamStatus.IncrementCwnd();
+
+                        if (streamStatus.Cwnd >= streamStatus.SlowStartThreshold)
+                        {
+                            streamStatus.State = CongestionControlState.CongestionAvoidance;
+                        }
+                    }
+                }
+
+                if (packetLost)
+                {
+                    SetChunkStates(envelope.Buffers, PendingChunkState.Waiting);
+                }
+                else
+                {
+                    SetChunkStates(envelope.Buffers, PendingChunkState.Delivered);
+                }
+            }
         }
+
+        private void SetChunkStates(List<ChunkPtr> list, PendingChunkState state)
+        {
+            Assert.True(list != null, "list != null");
+            Assert.True(list.Count > 0, "list.Count > 0");
+
+            foreach (var ptr in list)
+            {
+                int chunkIndex = ptr.ChunkIndex;
+                PendingBuffer buffer = ptr.Buffer;
+                Assert.True(buffer != null, "buffer != null");
+                buffer.SetChunkState(chunkIndex, state);
+
+                if (buffer.IsDelivered())
+                {
+                    OnDelivered?.Invoke(buffer);
+                }
+            }
+        }
+
 
         public event Action<PendingBuffer> OnDelivered;
     }

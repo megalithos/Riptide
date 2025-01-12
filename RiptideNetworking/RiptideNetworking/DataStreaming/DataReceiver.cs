@@ -22,12 +22,19 @@ namespace Riptide.DataStreaming
     {
         private readonly Dictionary<handle_t, FragmentAssembler> assemblerByHandle;
 
-
         private int maxPayloadSize;
-        public DataReceiver(int maxPayloadSize)
+        private IMessageSender messageSender;
+        private IMessageCreator messageCreator;
+
+        private uint recvSequence;
+        private ulong ackMask;
+
+        public DataReceiver(int maxPayloadSize, IMessageSender messageSender, IMessageCreator messageCreator)
         {
             this.maxPayloadSize = maxPayloadSize;
             this.assemblerByHandle = new Dictionary<handle_t, FragmentAssembler>();
+            this.messageSender = messageSender;
+            this.messageCreator = messageCreator;
         }
 
         public void Tick(double dt)
@@ -39,6 +46,11 @@ namespace Riptide.DataStreaming
         public unsafe void HandleChunkReceived(Message message)
         {
             uint sequence = (uint)message.GetVarULong();
+
+            // discard duplicate and out of order
+            if (sequence <= recvSequence)
+                return;
+
             message.GetBits(DataStreamer.numChunksBits, out uint numChunksUInt);
             int numChunks = (int)numChunksUInt;
 
@@ -69,6 +81,22 @@ namespace Riptide.DataStreaming
             }
 
             // ack
+            uint distance = sequence - recvSequence;
+            if (distance > DataStreamSettings.ackMaskBitCount)
+            {
+                ackMask = 1;
+            }
+            else
+            {
+                ackMask = (ackMask << (int)distance) | 1;
+            }
+
+            recvSequence = sequence;
+
+            Message ackMessage = messageCreator.Create();
+            ackMessage.AddUInt(sequence);
+            ackMessage.AddULong(ackMask);
+            messageSender.Send(ackMessage);
         }
 
         private void ProcessReceivedFragment(int fragmentIndex, int readBytes, FragmentAssembler fragmentAssembler)

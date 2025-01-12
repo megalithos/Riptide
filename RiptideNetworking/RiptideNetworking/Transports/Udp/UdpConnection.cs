@@ -16,7 +16,7 @@ using System.Runtime.InteropServices;
 namespace Riptide.Transports.Udp
 {
     /// <summary>Represents a connection to a <see cref="UdpServer"/> or <see cref="UdpClient"/>.</summary>
-    public class UdpConnection : Connection, IEquatable<UdpConnection>, IMessageCreator, IMessageSender, IConnectionDSStatusProvider
+    public class UdpConnection : Connection, IEquatable<UdpConnection>, IMessageCreator, IMessageSender, IConnectionDSStatusProvider, IReceiverRTTProvider
     {
         /// <summary>The endpoint representing the other end of the connection.</summary>
         public readonly IPEndPoint RemoteEndPoint;
@@ -49,7 +49,7 @@ namespace Riptide.Transports.Udp
             RemoteEndPoint = remoteEndPoint;
             this.peer = peer;
             dataStreamStatus = new ConnectionDataStreamStatus(DataStreamSettings.initialCwndSize, DataStreamSettings.maxCwnd);
-            dataStreamer = new DataStreamer(this, this, this, maxPayloadSize, maxHeaderSize);
+            dataStreamer = new DataStreamer(this, this, this, this, maxPayloadSize, maxHeaderSize);
         }
 
         public handle_t BeginStream(int channel, byte[] buffer, int startIndex, int numBytes)
@@ -68,7 +68,7 @@ namespace Riptide.Transports.Udp
 
             dataStreamStatus.PendingBuffers.Add(pendingBuffer);
 
-            return default(handle_t);
+            return pendingBuffer.Handle;
         }
 
         public void Tick(double dt)
@@ -131,6 +131,11 @@ namespace Riptide.Transports.Udp
         ConnectionDataStreamStatus IConnectionDSStatusProvider.GetConnectionDSStatus()
         {
             return dataStreamStatus;
+        }
+
+        public int get_rtt_ms()
+        {
+            return SmoothRTT;
         }
 
 #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member

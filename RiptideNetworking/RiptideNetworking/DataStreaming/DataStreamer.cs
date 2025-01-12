@@ -66,7 +66,7 @@ namespace Riptide.DataStreaming
             ConnectionDataStreamStatus dataStreamStatus = _connectionDataStreamStatus.GetConnectionDSStatus();
 
             // calculate how many bytes we may send
-            int maxSendableBytes = int.MaxValue;// Math.Min(DataStreamSettings.c_maxPayloadSize, (int)(dataStreamStatus.Cwnd - dataStreamStatus.BytesInFlight));
+            int maxSendableBytes = (int)(dataStreamStatus.Cwnd - dataStreamStatus.BytesInFlight);
 
             if (maxSendableBytes <= 0)
                 return;

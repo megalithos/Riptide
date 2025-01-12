@@ -7,6 +7,7 @@ using Riptide.Collections;
 using Riptide.Utils;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -35,7 +36,7 @@ namespace Riptide.DataStreaming
 
         private byte[] tmpbuf = new byte[2048];
 
-        public void HandleChunkReceived(Message message)
+        public unsafe void HandleChunkReceived(Message message)
         {
             uint sequence = (uint)message.GetVarULong();
             message.GetBits(DataStreamer.numChunksBits, out uint numChunksUInt);
@@ -53,6 +54,8 @@ namespace Riptide.DataStreaming
                 int fragmentIndex = (int)(fragmentIndexUInt);
 
                 int bufflen = (int)message.GetVarULong();
+
+                UnsafeUtil.ZeroMemory(tmpbuf);
 
                 int unreadBitsBefore = message.UnreadBits;
                 message.GetBytes(bufflen, tmpbuf, 0);
@@ -72,13 +75,22 @@ namespace Riptide.DataStreaming
         {
             if (!fragmentAssembler.IsFragmentReceived(fragmentIndex))
             {
-                ArraySlice<byte> slice = new ArraySlice<byte>(tmpbuf, 0, readBytes);
+                ArraySlice<byte> slice = new ArraySlice<byte>(tmpbuf, 0, maxPayloadSize);
                 fragmentAssembler.AddFragment(fragmentIndex, slice);
 
                 if (fragmentAssembler.IsFullyReceived())
                 {
                     byte[] buf = fragmentAssembler.GetAssembledBuffer();
-                    OnReceived?.Invoke(buf);
+
+                    int bufflen = (buf[0] & 0xFF) |
+                        ((buf[1] & 0xFF) << 8) |
+                        ((buf[2] & 0xFF) << 16) |
+                        ((buf[3] & 0xFF) << 24);
+
+                    // +4 to include first 4 bytes = length
+                    slice = new ArraySlice<byte>(buf, 0, bufflen + 4);
+
+                    OnReceived?.Invoke(slice);
                 }
             }
         }
@@ -95,7 +107,7 @@ namespace Riptide.DataStreaming
             return fragmentAssembler;
         }
 
-        public event Action<byte[]> OnReceived;
+        public event Action<ArraySlice<byte>> OnReceived;
     }
 
 }

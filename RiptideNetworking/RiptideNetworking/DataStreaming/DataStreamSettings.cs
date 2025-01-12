@@ -16,7 +16,8 @@ namespace Riptide.DataStreaming
         // 1231 so it matches riptide message's payload size.
         // I dont know why it's 1231 and not 1232
         public const int initialCwndSize = c_maxPayloadSize;
-        public const int slowStartThreshold = 1_073_741_824;
         public const int maxSendWindowElements = 1024;
+
+        public const int maxCwnd = 1024 * 1024; // ~1MB
     }
 }

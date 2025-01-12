@@ -23,6 +23,8 @@ namespace Riptide.DataStreaming
         /// </summary>
         public long BytesInFlight { get; set; }
 
+        public long SlowStartThreshold { get; set; }
+
         /// <summary>
         /// In bytes. Maximum amount of bytes we may drop on the wire
         /// without acknowledgement.
@@ -50,14 +52,16 @@ namespace Riptide.DataStreaming
             Cwnd += initialCwnd;
         }
 
-        public ConnectionDataStreamStatus()
+        public ConnectionDataStreamStatus(int initialCwnd, int initialSlowStartThreshold)
         {
-            this.initialCwnd = DataStreamSettings.initialCwndSize;
+            this.initialCwnd = initialCwnd;
 
             PendingBuffers = new List<PendingBuffer>();
             ResetCwnd();
 
             SendWindow = new RingBuffer<PayloadInfo>(DataStreamSettings.maxSendWindowElements);
+
+            this.SlowStartThreshold = initialSlowStartThreshold;
         }
     }
 }

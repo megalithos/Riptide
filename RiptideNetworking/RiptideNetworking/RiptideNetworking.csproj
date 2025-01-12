@@ -21,6 +21,7 @@
     <PackageIcon>package-icon.png</PackageIcon>
     <PackageReleaseNotes>Check out the full release notes: https://riptide.tomweiland.net/manual/updates/release-notes/v2.2.0.html</PackageReleaseNotes>
     <Title>Riptide Networking</Title>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -60,6 +61,7 @@
     <UPMSourceFiles Remove="DataStreaming\PayloadInfo.cs" />
     <UPMSourceFiles Remove="Utils\AssertUtil.cs" />
     <UPMSourceFiles Remove="Utils\MyMath.cs" />
+    <UPMSourceFiles Remove="Utils\UnsafeUtil.cs" />
   </ItemGroup>
 
   <ItemGroup>

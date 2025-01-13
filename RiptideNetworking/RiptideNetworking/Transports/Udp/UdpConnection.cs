@@ -8,10 +8,7 @@ using Riptide.DataStreaming;
 using Riptide.Utils;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Net;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace Riptide.Transports.Udp
 {
@@ -38,8 +35,8 @@ namespace Riptide.Transports.Udp
         /// <summary>
         /// Maximum amount of bytes we can add to a message.
         /// </summary>
-        private readonly int maxPayloadSize = Message.MaxPayloadSize - MyMath.IntCeilDiv(DataStreamer.numHeaderBits, 8);
-        private readonly int maxHeaderSize = Message.MaxHeaderSize + MyMath.IntCeilDiv(DataStreamer.numHeaderBits, 8);
+        private readonly int maxPayloadBits = DataStreamSettings.c_maxPayloadSize * 8 - DataStreamer.numHeaderBits - 4; // -4 for unreliable header
+        private readonly int maxHeaderSize = MyMath.IntCeilDiv(4 + DataStreamer.numHeaderBits, 8); // 4 for unreliable header
 
         /// <summary>Initializes the connection.</summary>
         /// <param name="remoteEndPoint">The endpoint representing the other end of the connection.</param>
@@ -49,7 +46,7 @@ namespace Riptide.Transports.Udp
             RemoteEndPoint = remoteEndPoint;
             this.peer = peer;
             dataStreamStatus = new ConnectionDataStreamStatus(DataStreamSettings.initialCwndSize, DataStreamSettings.maxCwnd);
-            dataStreamer = new DataStreamer(this, this, this, this, maxPayloadSize, maxHeaderSize);
+            dataStreamer = new DataStreamer(this, this, this, this, maxPayloadBits / 8, maxHeaderSize);
         }
 
         public handle_t BeginStream(int channel, byte[] buffer, int startIndex, int numBytes)
@@ -62,7 +59,7 @@ namespace Riptide.Transports.Udp
                 throw new ArgumentOutOfRangeException(nameof(numBytes), "Number of bytes exceeds buffer length.");
 
             PendingBuffer pendingBuffer = new PendingBuffer();
-            pendingBuffer.Construct(buffer, maxPayloadSize);
+            pendingBuffer.Construct(buffer, maxPayloadBits);
             pendingBuffer.Handle = nextHandle;
             nextHandle++;
 

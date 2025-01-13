@@ -71,5 +71,33 @@ namespace RiptideTests
 
             Assert.AreEqual(0, buff.Count);
         }
+
+        [Test]
+        public void LastWorks_1()
+        {
+            RingBuffer<int> buff = new RingBuffer<int>(4);
+            buff.Push(2);
+            buff.Push(5);
+            buff.Push(1);
+            buff.Push(13);
+
+            // [2, 5, 1, 13]
+            // tailIndex: 0
+            Assert.AreEqual(13, buff.PeekLast());
+        }
+
+        [Test]
+        public void LastWorks_2()
+        {
+            RingBuffer<int> buff = new RingBuffer<int>(4);
+            buff.Push(2);
+            buff.Push(5);
+            buff.Push(1);
+
+            // [2, 5, 1, ?]
+            // tailIndex: 0
+            // headIndex: 3
+            Assert.AreEqual(1, buff.PeekLast());
+        }
     }
 }

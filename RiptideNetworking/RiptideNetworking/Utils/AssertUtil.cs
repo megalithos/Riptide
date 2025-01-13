@@ -9,7 +9,7 @@ using System.Text;
 
 namespace Riptide.Utils
 {
-    internal static class Assert
+    internal static class AssertUtil
     {
         public static void True(bool condition, string message)
         {

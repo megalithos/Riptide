@@ -34,5 +34,10 @@ namespace Riptide.Utils
         {
             return Math.Abs(a - b) < epsilon;
         }
+
+        public static bool equal_approx(int a, int b, int maxDiff)
+        {
+            return Math.Abs(a - b) < maxDiff;
+        }
     }
 }

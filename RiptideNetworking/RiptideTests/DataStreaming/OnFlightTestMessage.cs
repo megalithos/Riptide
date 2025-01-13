@@ -14,7 +14,15 @@ namespace RiptideTests.DataStreaming
 {
     internal struct OnFlightTestMessage
     {
+        internal enum Dir
+        {
+            streamer2receiver = 1,
+            receiver2streamer
+        }
         public Message message;
         public double arrivalTime;
+        public int size;
+        public Dir dir;
+        public bool remove;
     }
 }

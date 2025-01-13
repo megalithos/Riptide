@@ -73,7 +73,7 @@ namespace Riptide.DataStreaming
                 message.GetBytes(bufflen, tmpbuf, 0);
                 int unreadBitsAfter = message.UnreadBits;
 
-                Assert.True((unreadBitsBefore - unreadBitsAfter) % 8 == 0, "(unreadBitsBefore - unreadBitsAfter) % 8 == 0");
+                AssertUtil.True((unreadBitsBefore - unreadBitsAfter) % 8 == 0, "(unreadBitsBefore - unreadBitsAfter) % 8 == 0");
                 int readBytes = (unreadBitsBefore - unreadBitsAfter) / 8;
 
                 FragmentAssembler fragmentAssembler = GetOrCreateAssembler(fragmentHandle, numFragments);

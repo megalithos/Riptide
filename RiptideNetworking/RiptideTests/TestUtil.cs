@@ -48,6 +48,13 @@ namespace RiptideTests
                 Assert.Fail($"Double equality test failed. Expected: {expected}, actual: {actual}, epsilon: {epsilon}");
         }
 
+        public static void AssertIntsEqualApprox(int expected, int actual, int maxDiff)
+        {
+            bool equal = MyMath.equal_approx(expected, actual, maxDiff);
+            if (!equal)
+                Assert.Fail($"Int equality test failed. Expected: {expected}, actual: {actual}, maxDiff: {maxDiff}");
+        }
+
         public static PendingBuffer CreateBuffer(int size, long maxPayloadSize, out byte[] buffer)
         {
             int len = size - 4;

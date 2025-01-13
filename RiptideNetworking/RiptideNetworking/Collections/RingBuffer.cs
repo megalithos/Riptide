@@ -36,6 +36,18 @@ namespace Riptide.Collections
 
             return _array[_tail];
         }
+        
+        public T PeekLast()
+        {
+            if (_count == 0)
+            {
+                throw new InvalidOperationException();
+            }
+            int index = _head - 1;
+            if (index < 0)
+                index = _array.Length - 1;
+            return _array[index];
+        }
 
         public void Push(T item)
         {
@@ -93,7 +105,7 @@ namespace Riptide.Collections
 
         public void Resize(int newSize)
         {
-            Assert.True(newSize > Capacity, "newSize > Capacity()");
+            AssertUtil.True(newSize > Capacity, "newSize > Capacity()");
 
             T[] newArray = new T[newSize];
 

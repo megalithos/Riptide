@@ -40,8 +40,8 @@ namespace Riptide.Collections
             int chunkBitsRequired = chunkStateBits * numRequiredChunks;
             int chunkStatesArraySize = MyMath.IntCeilDiv(chunkBitsRequired, 8);
 
-            Assert.True(chunkStateBits <= 8, "chunkStateBits <= 8");
-            Assert.True(chunkStateBits % 2 == 0, "chunkStateBits % 2 == 0");
+            AssertUtil.True(chunkStateBits <= 8, "chunkStateBits <= 8");
+            AssertUtil.True(chunkStateBits % 2 == 0, "chunkStateBits % 2 == 0");
             this.chunkStates = new byte[chunkStatesArraySize];
             totalChunks = numRequiredChunks;
             chunkStatesPerByte = 8 / chunkStateBits;

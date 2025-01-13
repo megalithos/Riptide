@@ -10,6 +10,7 @@ using System;
 using System.CodeDom;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -64,9 +65,19 @@ namespace Riptide.DataStreaming
             this.receiverRTTProvider = receiverRTTProvider;
         }
 
+        public struct tickstat_t
+        {
+            public int countSentFullBuffers;
+            public int countSentPartialMessages;
+        }
+
+        public tickstat_t GetLastTickStat() => lastTickStat;
+        private tickstat_t lastTickStat;
+
         private static List<ChunkPtr> chunkIndices = new List<ChunkPtr>();
         public void Tick(double dt)
         {
+            lastTickStat = default;
             chunkIndices.Clear();
             ConnectionDataStreamStatus dataStreamStatus = _connectionDataStreamStatus.GetConnectionDSStatus();
 
@@ -85,7 +96,6 @@ namespace Riptide.DataStreaming
                 // stages:
                 // 1) try send each chunk in their own packet
                 // 2) pack any last (smaller) chunks in the same packet and send, if possible
-                int writec = 0;
                 for (int i = 0; i < dataStreamStatus.PendingBuffers.Count; i++)
                 {
                     PendingBuffer current = dataStreamStatus.PendingBuffers[i];
@@ -119,11 +129,12 @@ namespace Riptide.DataStreaming
 
                         message.AddVarULong((ulong)buffer.Length);
                         message.AddBytes(buffer.Array, buffer.StartIndex, buffer.Length, includeLength: false);
-                        sendableBits -= message.WrittenBits;
+                        sendableBits -= message.BytesInUse * 8;
+
                         dataStreamStatus.BytesInFlight += message.WrittenBits / 8;
 
                         _messageSender.Send(message);
-                        writec++;
+                        lastTickStat.countSentFullBuffers++;
 
                         current.SetChunkState(index, PendingChunkState.OnFlight);
 
@@ -134,7 +145,7 @@ namespace Riptide.DataStreaming
 
                         dataStreamStatus.SendWindow.Push(new PayloadInfo(
                             sequence,
-                            message.WrittenBits / 8,
+                            MyMath.IntCeilDiv(message.WrittenBits, 8),
                             new List<ChunkPtr> { new ChunkPtr(current, index) }
                         ));
 
@@ -223,6 +234,7 @@ namespace Riptide.DataStreaming
         {
             message.SetBits((uint)addedChunks, numChunksBits, numChunksWriteBit);
             _messageSender.Send(message);
+            lastTickStat.countSentPartialMessages++;
             dataStreamStatus.BytesInFlight += message.WrittenBits / 8;
             sequence++;
 
@@ -231,7 +243,7 @@ namespace Riptide.DataStreaming
             foreach (ChunkPtr ptr in chunkIndices)
             {
                 PendingBuffer buffer = ptr.Buffer;
-                Assert.True(buffer != null, "buffer != null");
+                AssertUtil.True(buffer != null, "buffer != null");
 
                 buffer.SetChunkState(ptr.ChunkIndex, PendingChunkState.OnFlight);
                 containedChunkPtrs.Add(ptr);
@@ -265,9 +277,23 @@ namespace Riptide.DataStreaming
             return buffsizeWithFragmentHeaderInBits <= bits;
         }
 
+        public static int debugValue = 0;
         private uint clientRecvSequence;
+
+        public struct ackstat_t
+        {
+            public int acksReceived;
+        }
+
+        private ackstat_t lastAckStat;
+        public ackstat_t GetLastAckStat() => lastAckStat;
+        public void ResetLastAckStat() => lastAckStat = default;
+
+        private uint minSequenceForSlowStartIncrement;
         public void HandleChunkAck(Message message)
         {
+            lastAckStat.acksReceived++;
+
             uint sequence = message.GetUInt();
             ulong ackMask = message.GetULong();
 
@@ -294,7 +320,7 @@ namespace Riptide.DataStreaming
 
                 streamStatus.BytesInFlight -= envelope.Size;
 
-                Assert.True(streamStatus.BytesInFlight >= 0, "streamStatus.BytesInFlight >= 0");
+                AssertUtil.True(streamStatus.BytesInFlight >= 0, "streamStatus.BytesInFlight >= 0");
 
                 // distance == 0 or less, that means
                 // we have delivered enveloper or it has been lost
@@ -312,19 +338,27 @@ namespace Riptide.DataStreaming
                         streamStatus.SlowStartThreshold = streamStatus.Cwnd / 2;
                         streamStatus.ResetCwnd();
                         streamStatus.State = CongestionControlState.SlowStart;
+
+                        // invalidate any sequences in the send window, so they wont increment cwnd
+                        // since it was just reset
+                        minSequenceForSlowStartIncrement = streamStatus.SendWindow.PeekLast().Sequence + 1;
+                        AssertUtil.True(minSequenceForSlowStartIncrement != 0, "minSequenceForSlowStartIncrement != 0");
                     }
                 }
                 else
                 {
                     packetLost = false;
-                    if (streamStatus.State == CongestionControlState.SlowStart)
+                    if (streamStatus.State == CongestionControlState.SlowStart &&
+                        envelope.Sequence >= minSequenceForSlowStartIncrement)
                     {
                         streamStatus.IncrementCwnd();
 
                         if (streamStatus.Cwnd >= streamStatus.SlowStartThreshold)
                         {
                             streamStatus.State = CongestionControlState.CongestionAvoidance;
+                            streamStatus.CwndIncrementTimer = receiverRTTProvider.get_rtt_ms() / 1000f;
                         }
+                        debugValue++;
                     }
                 }
 
@@ -341,14 +375,14 @@ namespace Riptide.DataStreaming
 
         private void SetChunkStates(List<ChunkPtr> list, PendingChunkState state)
         {
-            Assert.True(list != null, "list != null");
-            Assert.True(list.Count > 0, "list.Count > 0");
+            AssertUtil.True(list != null, "list != null");
+            AssertUtil.True(list.Count > 0, "list.Count > 0");
 
             foreach (var ptr in list)
             {
                 int chunkIndex = ptr.ChunkIndex;
                 PendingBuffer buffer = ptr.Buffer;
-                Assert.True(buffer != null, "buffer != null");
+                AssertUtil.True(buffer != null, "buffer != null");
                 buffer.SetChunkState(chunkIndex, state);
 
                 if (buffer.IsDelivered())

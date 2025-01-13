@@ -16,7 +16,7 @@ namespace Riptide.Utils
         public static unsafe void ZeroMemory(byte[] bytes)
         {
             int len = bytes.Length;
-            Assert.True(len % 8 == 0, "len % 8 == 0");
+            AssertUtil.True(len % 8 == 0, "len % 8 == 0");
 
             int ulen = (len / 8);
 

@@ -324,11 +324,11 @@ namespace Riptide
                     connection.HandleAck(message);
                     break;
                 case MessageHeader.DataStream:
-                    Assert.True(udpConnection != null, "DataStreamChunk modes are only supported for UdpConnections");
+                    AssertUtil.True(udpConnection != null, "DataStreamChunk modes are only supported for UdpConnections");
                     udpConnection.HandleDataStreamChunkReceived(message);
                     break;
                 case MessageHeader.DataStreamChunkAck:
-                    Assert.True(udpConnection != null, "DataStreamChunk modes are only supported for UdpConnections");
+                    AssertUtil.True(udpConnection != null, "DataStreamChunk modes are only supported for UdpConnections");
                     udpConnection.HandleDataStreamChunkAckReceived(message);
                     break;
                 case MessageHeader.Connect:

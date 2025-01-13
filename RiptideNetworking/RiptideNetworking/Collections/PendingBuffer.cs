@@ -78,6 +78,16 @@ namespace Riptide.Collections
             if (chunkIndex < 0 || chunkIndex >= totalChunks)
                 throw new ArgumentOutOfRangeException(nameof(chunkIndex));
 
+            var prevState = GetChunkState(chunkIndex);
+
+            if (prevState != state)
+            {
+                if (state == PendingChunkState.Delivered)
+                    numDeliveredChunks++;
+                else if (prevState == PendingChunkState.Delivered)
+                    numDeliveredChunks--;
+            }
+
             int byteIndex, chunkStateIndexWithinByte;
             GetIndexes(chunkIndex, out byteIndex, out chunkStateIndexWithinByte);
 
@@ -119,13 +129,7 @@ namespace Riptide.Collections
 
         public bool IsDelivered()
         {
-            for (int i = 0; i < totalChunks; i++)
-            {
-                PendingChunkState state = GetChunkState(i);
-                if (state != PendingChunkState.Delivered)
-                    return false;
-            }
-            return true;
+            return NumTotalChunks() == numDeliveredChunks;
         }
 
         public int NumTotalChunks() { return totalChunks; }

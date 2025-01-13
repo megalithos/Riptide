@@ -373,6 +373,117 @@ namespace RiptideTests.DataStreaming
             Assert.AreEqual(pb, deliveredPb, "event should be invoked");
         }
 
+        [Test]
+        public void Test_SS_To_SS_Works()
+        {
+            int ssthresh = 100_000;
+            status = new ConnectionDataStreamStatus(DataStreamSettings.initialCwndSize, 100_000);
+
+            double testSimulationDuration = 30.0;
+
+            int dtIndex = 0;
+            long prevCwnd = DataStreamSettings.initialCwndSize;
+
+            PendingBuffer pb = TestUtil.CreateBuffer((int)(initialSlowStartThreshold * 3f), maxPayloadSize, out byte[] testbuf);
+
+            status.PendingBuffers.Add(pb);
+
+            double prevTime = 0;
+
+            int congestionAvoidanceCount = 0;
+            int iteration = -1;
+
+            bool didDrop = false;
+
+            const int dropThreshold = 75_000;
+
+            double dropTime = 0.0;
+
+            bool cantest = true;
+            bool dropDetected = false;
+            while (simulationTime <= testSimulationDuration)
+            {
+                iteration++;
+                // advance time
+                float dt = frame_dts[dtIndex];
+                simulationTime += dt;
+                dtIndex = (dtIndex + 1) % frame_dts.Length;
+
+                var tickstat = streamer.GetLastTickStat();
+                streamer.Tick(dt);
+                if (tickstat.countSentFullBuffers > 0 || tickstat.countSentPartialMessages > 0)
+                {
+                    Console.WriteLine($"time: {simulationTime:F3}, sent full buffers: {tickstat.countSentFullBuffers}, sent partial messages: {tickstat.countSentPartialMessages}");
+                }
+                receiver.Tick(dt);
+                process_messages(receiverList, (Message m) => {
+                    receiver.HandleChunkReceived(m);
+                });
+
+                streamer.ResetLastAckStat();
+                process_messages(streamerList, (Message m) => {
+                    streamer.HandleChunkAck(m);
+                });
+
+                // slow start
+                long cwnd = status.Cwnd;
+
+                if (cwnd > dropThreshold && !didDrop)
+                {
+                    dropSinglePacket = true;
+                    Console.WriteLine($"time: {simulationTime:F3} WILL DROP single packet... cwnd: {cwnd}");
+                    didDrop = true;
+                    dropTime = simulationTime;
+                    cantest = false;
+                }
+
+                if (cwnd != prevCwnd)
+                {
+                    if (cwnd <= 1300 && didDrop)
+                    {
+                        double elapsed = simulationTime - dropTime;
+                        TestUtil.AssertDoublesEqualApprox(get_rtt_ms() / 1000f, elapsed, 0.1);
+
+                        ssthresh = (int)dropThreshold / 2;
+                        congestionAvoidanceCount = 0;
+                        cantest = true;
+                        prevCwnd = cwnd / 2; // hacky
+                        dropDetected = true;
+                    }
+
+                    Console.WriteLine("====================================");
+                    Console.WriteLine($"time: {simulationTime:F3} s , cwnd: " + cwnd.ToString() + ", measured cwnd: " + measured_cwnd.ToString());
+
+                    if (cantest)
+                    {
+                        if (cwnd <= ssthresh)
+                        {
+                            double change = (double)cwnd / prevCwnd;
+                            Console.WriteLine("(slow start) change: {0}x", change);
+                            TestUtil.AssertDoublesEqualApprox(2.0, change, 0.1);
+                        }
+                    }
+
+                    prevCwnd = cwnd;
+                }
+
+                foreach (var m in receiverList)
+                {
+                    if (!m.remove) continue;
+
+                    measured_cwnd -= m.size;
+                }
+
+                receiverList.RemoveAll(m => m.remove);
+                streamerList.RemoveAll(m => m.remove);
+            }
+
+            Assert.True(dropDetected, "dropDetected");
+            Assert.IsTrue(didDrop, "didDrop");
+            TestUtil.AssertByteArraysEqual(testbuf, recvBytes);
+            Assert.AreEqual(pb, deliveredPb, "event should be invoked");
+        }
+
         private void process_messages(List<OnFlightTestMessage> list, Action<Message> cb)
         {
             DataStreamer.debugValue = 0;

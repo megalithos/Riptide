@@ -289,7 +289,7 @@ namespace Riptide.DataStreaming
         public ackstat_t GetLastAckStat() => lastAckStat;
         public void ResetLastAckStat() => lastAckStat = default;
 
-        private uint minSequenceForSlowStartIncrement;
+        private uint minValidSequence;
         public void HandleChunkAck(Message message)
         {
             lastAckStat.acksReceived++;
@@ -333,23 +333,22 @@ namespace Riptide.DataStreaming
                 {
                     packetLost = true;
 
-                    if (streamStatus.State != CongestionControlState.SlowStart)
+                    if (streamStatus.State == CongestionControlState.SlowStart && envelope.Sequence >= minValidSequence)
                     {
                         streamStatus.SlowStartThreshold = streamStatus.Cwnd / 2;
                         streamStatus.ResetCwnd();
                         streamStatus.State = CongestionControlState.SlowStart;
 
-                        // invalidate any sequences in the send window, so they wont increment cwnd
-                        // since it was just reset
-                        minSequenceForSlowStartIncrement = streamStatus.SendWindow.PeekLast().Sequence + 1;
-                        AssertUtil.True(minSequenceForSlowStartIncrement != 0, "minSequenceForSlowStartIncrement != 0");
+                        // invalidate any sequences in the send window, so they wont increment or reset cwnd
+                        minValidSequence = streamStatus.SendWindow.PeekLast().Sequence + 1;
+                        AssertUtil.True(minValidSequence != 0, "minSequenceForSlowStartIncrement != 0");
                     }
                 }
                 else
                 {
                     packetLost = false;
                     if (streamStatus.State == CongestionControlState.SlowStart &&
-                        envelope.Sequence >= minSequenceForSlowStartIncrement)
+                        envelope.Sequence >= minValidSequence)
                     {
                         streamStatus.IncrementCwnd();
 

@@ -223,6 +223,22 @@ namespace RiptideTests
         }
 
         [Test]
+        public void Test_IsDeliveredWorks_2()
+        {
+            PendingBuffer buffer = NewBuffer();
+            buffer.Construct(new byte[] { 1, 2, 3, 4 },  2);
+            Assert.AreEqual(2, buffer.NumTotalChunks());
+            Assert.AreEqual(false, buffer.IsDelivered());
+
+            buffer.SetChunkState(0, PendingChunkState.Delivered);
+            buffer.SetChunkState(1, PendingChunkState.Delivered);
+            Assert.AreEqual(true, buffer.IsDelivered());
+
+            buffer.SetChunkState(1, PendingChunkState.Waiting);
+            Assert.AreEqual(false, buffer.IsDelivered());
+        }
+
+        [Test]
         public void GetLastChunkIndexWorks()
         {
             PendingBuffer buffer = NewBuffer();

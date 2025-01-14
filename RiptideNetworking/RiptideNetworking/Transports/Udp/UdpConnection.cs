@@ -29,8 +29,6 @@ namespace Riptide.Transports.Udp
 
         private handle_t nextHandle = new handle_t(1);
 
-        private readonly int maxPayloadBytes = DataStreamSettings.c_maxPayloadSize;
-
         private readonly int maxPendingBufferSize =
                 DataStreamSettings.c_maxPayloadSize - MyMath.IntCeilDiv(DataStreamer.totalFragmentHeaderBits + DataStreamer.totalSubheaderBits + 4, 8);
 
@@ -42,8 +40,8 @@ namespace Riptide.Transports.Udp
             RemoteEndPoint = remoteEndPoint;
             this.peer = peer;
             dataStreamStatus = new ConnectionDataStreamStatus(DataStreamSettings.initialCwndSize, DataStreamSettings.maxCwnd);
-            dataStreamer = new DataStreamer(this, new StreamerMessageCreator(), this, this, maxPayloadBytes, 4);
-            dataReceiver = new DataReceiver(maxPayloadBytes, this, new ReceiverMessageCreator());
+            dataStreamer = new DataStreamer(this, new StreamerMessageCreator(), this, this, maxPendingBufferSize, 4);
+            dataReceiver = new DataReceiver(maxPendingBufferSize, this, new ReceiverMessageCreator());
 
             dataStreamer.OnDelivered += (PendingBuffer pb) =>
             {
@@ -52,8 +50,8 @@ namespace Riptide.Transports.Udp
 
             dataReceiver.OnReceived += (ArraySlice<byte> slice) =>
             {
-                byte[] buff = new byte[slice.Length];
-                Buffer.BlockCopy(slice.Array, slice.StartIndex, buff, 0, slice.Length);
+                byte[] buff = new byte[slice.Length - 4];
+                Buffer.BlockCopy(slice.Array, slice.StartIndex + 4, buff, 0, slice.Length - 4);
                 OnStreamReceived?.Invoke(buff);
             };
         }

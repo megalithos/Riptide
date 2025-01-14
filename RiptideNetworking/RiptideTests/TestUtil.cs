@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -28,17 +29,6 @@ namespace RiptideTests
             random.NextBytes(byteArray);
 
             return byteArray;
-        }
-
-        public static void AssertByteArraysEqual(byte[] expected, byte[] b)
-        {
-            Assert.IsTrue(expected != null, "expected was null");
-            Assert.IsTrue(b != null, "b was null");
-            Assert.AreEqual(expected.Length, b.Length, $"array length mismatch, expected array of length {expected.Length} but received array of length {b.Length}");
-            for (int i = 0; i < expected.Length; i++)
-            {
-                Assert.IsTrue(expected[i] == b[i], $"expected value {expected[i]} but received value {b[i]} at index #{i}");
-            }
         }
 
         public static void AssertDoublesEqualApprox(double expected, double actual, double epsilon)
@@ -90,6 +80,26 @@ namespace RiptideTests
                 m_randomValue *= 7;
                 m_randomValue >>= 2;
                 return m_randomValue % (uint)maxExclusive;
+            }
+        }
+
+        public static byte[] HashBytes(byte[] bytes)
+        {
+            using (SHA256 sha = SHA256.Create())
+            {
+                return sha.ComputeHash(bytes);
+            }
+        }
+
+        public static void AssertByteArraysEqual(byte[] expectd, byte[] b)
+        {
+            Assert.IsTrue(expectd != null, "a was null");
+            Assert.IsTrue(b != null, "b was null");
+            Assert.IsTrue(expectd.Length == b.Length, "length mismatch");
+            for (int i = 0; i < expectd.Length; i++)
+            {
+                if (expectd[i] != b[i])
+                    Assert.Fail($"Mismatch at index #{i}. Expected: {expectd[i]}, actual: {b[i]}");
             }
         }
     }

@@ -30,6 +30,12 @@ namespace Riptide.DataStreaming
     // each packet will have one and only one riptide header and subheader.
     // but may have multiple fragment headers.
 
+    // todo:
+    //   - last chunks (small) are not batched into one packet. it might not even be
+    //     necessary since you would use this whole data streaming system
+    //     to mainly stream large buffers, so the minimal gains might not
+    //     be worth the efforts.
+
     // summary:
     //   - send pending buffers using congestion control
     //   - invoke event on completion
@@ -47,6 +53,7 @@ namespace Riptide.DataStreaming
 
         public const int totalSubheaderBits = sequenceBits + payloadFragmentCountBits;
         public const int totalFragmentHeaderBits = totalFragmentsBits + fragmentIndexBits + fragmentHandleBits + arraySizeBits;
+        private int minMessageBitsForSend;
 
         private uint sequence = 1;
 
@@ -70,6 +77,9 @@ namespace Riptide.DataStreaming
             this.maxPayloadSize = maxPayloadSizeBytes;
             this.riptideHeaderSizeBits = riptideHeaderSizeBits;
             this.receiverRTTProvider = receiverRTTProvider;
+
+            // +8 for one byte
+            this.minMessageBitsForSend = riptideHeaderSizeBits + totalSubheaderBits + totalFragmentHeaderBits + 8;
         }
 
         public struct tickstat_t
@@ -93,143 +103,74 @@ namespace Riptide.DataStreaming
 
             // calculate how many bytes we may send
             int maxSendableBytes = (int)(dataStreamStatus.Cwnd - dataStreamStatus.BytesInFlight);
+            long sendableBits = ((long)maxSendableBytes) * 8;
 
-            if (maxSendableBytes <= 0)
+            if (sendableBits <= minMessageBitsForSend)
                 return;
 
-            long sendableBits = ((long)maxSendableBytes) * 8;
             Message message = null;
             int numChunksWriteBit = 0;
-            bool stopSend = false;
+            bool breakOuter = false;
 
-            if (maxSendableBytes >= maxPayloadSize)
+            for (int i = 0; i < dataStreamStatus.PendingBuffers.Count; i++)
             {
-                // stages:
-                // 1) try send each chunk in their own packet
-                // 2) pack any last (smaller) chunks in the same packet and send, if possible
-                for (int i = 0; i < dataStreamStatus.PendingBuffers.Count; i++)
-                {
-                    if (stopSend)
-                        break;
+                if (breakOuter)
+                    break;
 
-                    PendingBuffer current = dataStreamStatus.PendingBuffers[i];
-
-                    int totalChunks = current.NumTotalChunks();
-                    while (true) // iterate chunks
-                    {
-                        if (message == null)
-                        {
-                            message = InitNewMessage(out numChunksWriteBit);
-                        }
-
-                        int index = current.SeekNextWaitingIndex(0);
-
-                        // could not find a chunk that we could send
-                        if (index < 0)
-                            break;
-
-                        ArraySlice<byte> buffer = current.GetBuffer(index);
-                        bool canWrite = CanSerializeBufferInBitsIncludingFragmentHeaderSize(buffer, Math.Min(sendableBits, message.UnwrittenBits));
-                        if (!canWrite)
-                            break;
-
-                        // only 1 chunk in this message
-                        message.SetBits(1, payloadFragmentCountBits, numChunksWriteBit);
-
-                        // write fragment header
-                        message.AddBits((uint)(int)current.Handle, fragmentHandleBits);
-                        message.AddBits((uint)current.NumTotalChunks(), totalFragmentsBits);
-                        message.AddBits((uint)index, fragmentIndexBits);
-
-                        message.AddBits((ulong)buffer.Length, arraySizeBits);
-                        message.AddBytes(buffer.Array, buffer.StartIndex, buffer.Length, includeLength: false);
-                        sendableBits -= message.BytesInUse * 8;
-
-                        dataStreamStatus.BytesInFlight += message.BytesInUse;
-
-                        _messageSender.Send(message);
-                        lastTickStat.countSentFullBuffers++;
-
-                        current.SetChunkState(index, PendingChunkState.OnFlight);
-
-                        if (dataStreamStatus.SendWindow.IsFull)
-                        {
-                            dataStreamStatus.SendWindow.Resize(dataStreamStatus.SendWindow.Capacity * 2);
-                        }
-
-                        AddPayloadInfoToSendWindow(message, new List<ChunkPtr> { new ChunkPtr(current, index) });
-
-                        sequence++;
-                        message = null;
-
-                        if (sendableBits < riptideHeaderSizeBits * 8 + 8)
-                        {
-                            // can not write even a single header + one byte
-                            stopSend = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            int addedChunks = 0;
-            if (!stopSend)
-            {
-                for (int i = 0; i < dataStreamStatus.PendingBuffers.Count; i++)
+                PendingBuffer current = dataStreamStatus.PendingBuffers[i];
+                int totalChunks = current.NumTotalChunks();
+                while (true)
                 {
                     if (message == null)
-                    {
-                        addedChunks = 0;
                         message = InitNewMessage(out numChunksWriteBit);
-                    }
 
-                    PendingBuffer current = dataStreamStatus.PendingBuffers[i];
-                    int lastChunkIndex = current.GetLastChunkIndex();
+                    int index = current.SeekNextWaitingIndex(0);
 
-                    if (current.GetChunkState(lastChunkIndex) != PendingChunkState.Waiting)
-                    {
-                        continue;
-                    }
+                    // could not find a chunk that we could send
+                    if (index < 0)
+                        break;
 
-                    ArraySlice<byte> buffer = current.GetBuffer(lastChunkIndex);
+                    ArraySlice<byte> buffer = current.GetBuffer(index);
                     bool canWrite = CanSerializeBufferInBitsIncludingFragmentHeaderSize(buffer, Math.Min(sendableBits, message.UnwrittenBits));
-
                     if (!canWrite)
-                        continue;
+                        break;
+
+                    // only 1 chunk in this message
+                    message.SetBits(1, payloadFragmentCountBits, numChunksWriteBit);
 
                     // write fragment header
                     message.AddBits((uint)(int)current.Handle, fragmentHandleBits);
                     message.AddBits((uint)current.NumTotalChunks(), totalFragmentsBits);
-                    message.AddBits((uint)lastChunkIndex, fragmentIndexBits);
+                    message.AddBits((uint)index, fragmentIndexBits);
 
                     message.AddBits((ulong)buffer.Length, arraySizeBits);
                     message.AddBytes(buffer.Array, buffer.StartIndex, buffer.Length, includeLength: false);
-                    sendableBits -= message.WrittenBits;
+                    sendableBits -= message.BytesInUse * 8;
 
-                    chunkIndices.Add(new ChunkPtr(current, lastChunkIndex));
+                    dataStreamStatus.BytesInFlight += message.BytesInUse;
 
-                    addedChunks++;
+                    _messageSender.Send(message);
+                    lastTickStat.countSentFullBuffers++;
 
-                    int minExtraFragmentBits = fragmentIndexBits + payloadFragmentCountBits + 8;
-                    if (message.UnwrittenBits < minExtraFragmentBits)
+                    current.SetChunkState(index, PendingChunkState.OnFlight);
+
+                    if (dataStreamStatus.SendWindow.IsFull)
                     {
-                        // message is full
-                        FinalizeSendMultipleChunkMessage(message, numChunksWriteBit, addedChunks, dataStreamStatus);
-                        message = null;
+                        dataStreamStatus.SendWindow.Resize(dataStreamStatus.SendWindow.Capacity * 2);
                     }
 
-                    if (sendableBits < minExtraFragmentBits)
+                    AddPayloadInfoToSendWindow(message, new List<ChunkPtr> { new ChunkPtr(current, index) });
+                    sequence++;
+
+                    message = null;
+
+                    if (sendableBits <= minMessageBitsForSend)
                     {
-                        // can not write a single additional chunk with single byte
+                        // can not write even a single header + one byte
+                        breakOuter = true;
                         break;
                     }
                 }
-            }
-
-            if (message != null && addedChunks > 0)
-            {
-                FinalizeSendMultipleChunkMessage(message, numChunksWriteBit, addedChunks, dataStreamStatus);
-                message = null;
             }
         }
 

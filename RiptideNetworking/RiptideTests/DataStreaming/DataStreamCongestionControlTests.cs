@@ -177,7 +177,8 @@ namespace RiptideTests.DataStreaming
             int dtIndex = 0;
             long prevCwnd = 1229;
 
-            PendingBuffer pb = TestUtil.CreateBuffer((int)2_000_000, maxPendingBufferBufferSize, out byte[] testbuf);
+            PendingBuffer pb = TestUtil.CreateBuffer(2_371_224, maxPendingBufferBufferSize, out byte[] testbuf);
+            byte[] originalBufferHash = TestUtil.HashBytes(testbuf);
 
             status.PendingBuffers.Add(pb);
             int iteration = -1;
@@ -218,6 +219,8 @@ namespace RiptideTests.DataStreaming
             }
 
             TestUtil.AssertByteArraysEqual(testbuf, recvBytes);
+            byte[] actualHash = TestUtil.HashBytes(recvBytes);
+            TestUtil.AssertByteArraysEqual(originalBufferHash, actualHash);
         }
 
         [Test]

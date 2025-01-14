@@ -71,5 +71,26 @@ namespace RiptideTests
 
             return pb;
         }
+
+        public class TestPRNG
+        {
+            public TestPRNG(int seed)
+            {
+                m_randomValue = (uint)seed;
+            }
+
+            private static uint m_randomValue;
+
+            /// <summary>
+            /// Generate random number in range [0, maxExclusive[
+            /// </summary>
+            public uint Next(int maxExclusive)
+            {
+                // my own alg for testing...
+                m_randomValue *= 7;
+                m_randomValue >>= 2;
+                return m_randomValue % (uint)maxExclusive;
+            }
+        }
     }
 }

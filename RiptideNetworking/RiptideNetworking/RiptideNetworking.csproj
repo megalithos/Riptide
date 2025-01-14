@@ -60,6 +60,8 @@
     <UPMSourceFiles Remove="DataStreaming\IMessageSender.cs" />
     <UPMSourceFiles Remove="DataStreaming\IReceiverRTTProvider.cs" />
     <UPMSourceFiles Remove="DataStreaming\PayloadInfo.cs" />
+    <UPMSourceFiles Remove="Transports\Udp\ReceiverMessageCreator.cs" />
+    <UPMSourceFiles Remove="Transports\Udp\StreamerMessageCreator.cs" />
     <UPMSourceFiles Remove="Utils\AssertUtil.cs" />
     <UPMSourceFiles Remove="Utils\MyMath.cs" />
     <UPMSourceFiles Remove="Utils\UnsafeUtil.cs" />

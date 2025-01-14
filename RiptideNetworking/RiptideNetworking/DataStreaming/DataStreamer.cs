@@ -16,30 +16,37 @@ using System.Threading.Tasks;
 
 namespace Riptide.DataStreaming
 {
-    // struct s2cMessageHeader
-    //   message riptide header id (4  bits)
-    //   sequence          (32 bits)
-    //   numChunks         (16 bits)
-    //   numFragments      (32 bits) ~5 TB max limit
-    //   fragmentIndex     (32 bits)
+    // struct streamPacket
+    //   message riptide header id      (4  bits)  // riptide header
+    //   sequence                       (32 bits)  // subheader
+    //   containedFragments             (16 bits)  // subheader
+    //   totalFragments                 (32 bits)  // fragment header, required for reassembly
+    //   fragmentIndex                  (32 bits)  // fragment header, required for reaseembly
+    //   fragmentHandle                 (32 bits)  // fragment header, unique identifier for the whole buffer
+    //   arraySize                      (32 bits)  // fragment header, size of the fragment data
     //   chunk0data...
+
+    // whole packet is called payload.
+    // each packet will have one and only one riptide header and subheader.
+    // but may have multiple fragment headers.
 
     // summary:
     //   - send pending buffers using congestion control
     //   - invoke event on completion
     internal class DataStreamer
     {
+        // subheader
         public const int sequenceBits = 32;
-        public const int numChunksBits = 16;
-        public const int numFragmentsBits = 32; // ~5 TB max limit with ~1200 B packets
+        public const int payloadFragmentCountBits = 32;
+
+        // fragment header
+        public const int totalFragmentsBits = 16;
         public const int fragmentIndexBits = 32;
         public const int fragmentHandleBits = 32;
+        public const int arraySizeBits = 32;
 
-        /// <summary>
-        /// Minimum amount of bits for the header, excluding any riptide message headers.
-        /// </summary>
-        public const int numHeaderBits = sequenceBits + numChunksBits + numFragmentsBits + fragmentIndexBits + fragmentHandleBits;
-        public const int numChunkHeaderBits = numFragmentsBits + fragmentIndexBits + fragmentHandleBits;
+        public const int totalSubheaderBits = sequenceBits + payloadFragmentCountBits;
+        public const int totalFragmentHeaderBits = totalFragmentsBits + fragmentIndexBits + fragmentHandleBits + arraySizeBits;
 
         private uint sequence = 1;
 
@@ -48,20 +55,20 @@ namespace Riptide.DataStreaming
         private readonly IMessageSender _messageSender;
         private readonly IReceiverRTTProvider receiverRTTProvider;
         private readonly int maxPayloadSize;
-        private readonly int maxHeaderSize;
+        private readonly int riptideHeaderSizeBits;
 
         public DataStreamer(IConnectionDSStatusProvider connectionDataStreamStatusProvider,
                             IMessageCreator messageCreator,
                             IMessageSender messageSender,
                             IReceiverRTTProvider receiverRTTProvider,
-                            int maxPayloadSize,
-                            int maxHeaderSize)
+                            int maxPayloadSizeBytes,
+                            int riptideHeaderSizeBits)
         {
             _connectionDataStreamStatus = connectionDataStreamStatusProvider;
             _messageCreator = messageCreator;
             _messageSender = messageSender;
-            this.maxPayloadSize = maxPayloadSize;
-            this.maxHeaderSize = maxHeaderSize;
+            this.maxPayloadSize = maxPayloadSizeBytes;
+            this.riptideHeaderSizeBits = riptideHeaderSizeBits;
             this.receiverRTTProvider = receiverRTTProvider;
         }
 
@@ -79,7 +86,10 @@ namespace Riptide.DataStreaming
         {
             lastTickStat = default;
             chunkIndices.Clear();
+
             ConnectionDataStreamStatus dataStreamStatus = _connectionDataStreamStatus.GetConnectionDSStatus();
+            UpdateAndProcessExpiredEnvelopes(dt, dataStreamStatus);
+            UpdateCwndTimerAndIncrementCwnd(dt, dataStreamStatus);
 
             // calculate how many bytes we may send
             int maxSendableBytes = (int)(dataStreamStatus.Cwnd - dataStreamStatus.BytesInFlight);
@@ -90,6 +100,7 @@ namespace Riptide.DataStreaming
             long sendableBits = ((long)maxSendableBytes) * 8;
             Message message = null;
             int numChunksWriteBit = 0;
+            bool stopSend = false;
 
             if (maxSendableBytes >= maxPayloadSize)
             {
@@ -98,6 +109,9 @@ namespace Riptide.DataStreaming
                 // 2) pack any last (smaller) chunks in the same packet and send, if possible
                 for (int i = 0; i < dataStreamStatus.PendingBuffers.Count; i++)
                 {
+                    if (stopSend)
+                        break;
+
                     PendingBuffer current = dataStreamStatus.PendingBuffers[i];
 
                     int totalChunks = current.NumTotalChunks();
@@ -115,23 +129,23 @@ namespace Riptide.DataStreaming
                             break;
 
                         ArraySlice<byte> buffer = current.GetBuffer(index);
-                        bool canWrite = CanSerializeBufferInBits(buffer, Math.Min(sendableBits, message.UnwrittenBits));
+                        bool canWrite = CanSerializeBufferInBitsIncludingFragmentHeaderSize(buffer, Math.Min(sendableBits, message.UnwrittenBits));
                         if (!canWrite)
                             break;
 
                         // only 1 chunk in this message
-                        message.SetBits(1, numChunksBits, numChunksWriteBit);
+                        message.SetBits(1, payloadFragmentCountBits, numChunksWriteBit);
 
                         // write fragment header
                         message.AddBits((uint)(int)current.Handle, fragmentHandleBits);
-                        message.AddBits((uint)current.NumTotalChunks(), numFragmentsBits);
+                        message.AddBits((uint)current.NumTotalChunks(), totalFragmentsBits);
                         message.AddBits((uint)index, fragmentIndexBits);
 
-                        message.AddVarULong((ulong)buffer.Length);
+                        message.AddBits((ulong)buffer.Length, arraySizeBits);
                         message.AddBytes(buffer.Array, buffer.StartIndex, buffer.Length, includeLength: false);
                         sendableBits -= message.BytesInUse * 8;
 
-                        dataStreamStatus.BytesInFlight += message.WrittenBits / 8;
+                        dataStreamStatus.BytesInFlight += message.BytesInUse;
 
                         _messageSender.Send(message);
                         lastTickStat.countSentFullBuffers++;
@@ -143,71 +157,72 @@ namespace Riptide.DataStreaming
                             dataStreamStatus.SendWindow.Resize(dataStreamStatus.SendWindow.Capacity * 2);
                         }
 
-                        dataStreamStatus.SendWindow.Push(new PayloadInfo(
-                            sequence,
-                            MyMath.IntCeilDiv(message.WrittenBits, 8),
-                            new List<ChunkPtr> { new ChunkPtr(current, index) }
-                        ));
+                        AddPayloadInfoToSendWindow(message, new List<ChunkPtr> { new ChunkPtr(current, index) });
 
                         sequence++;
                         message = null;
 
-                        if (sendableBits < maxHeaderSize * 8 + 8)
+                        if (sendableBits < riptideHeaderSizeBits * 8 + 8)
                         {
                             // can not write even a single header + one byte
-                            return;
+                            stopSend = true;
+                            break;
                         }
                     }
                 }
             }
 
             int addedChunks = 0;
-            for (int i = 0; i < dataStreamStatus.PendingBuffers.Count; i++)
+            if (!stopSend)
             {
-                if (message == null)
+                for (int i = 0; i < dataStreamStatus.PendingBuffers.Count; i++)
                 {
-                    addedChunks = 0;
-                    message = InitNewMessage(out numChunksWriteBit);
-                }
+                    if (message == null)
+                    {
+                        addedChunks = 0;
+                        message = InitNewMessage(out numChunksWriteBit);
+                    }
 
-                PendingBuffer current = dataStreamStatus.PendingBuffers[i];
-                int lastChunkIndex = current.GetLastChunkIndex();
+                    PendingBuffer current = dataStreamStatus.PendingBuffers[i];
+                    int lastChunkIndex = current.GetLastChunkIndex();
 
-                if (current.GetChunkState(lastChunkIndex) != PendingChunkState.Waiting)
-                {
-                    continue;
-                }
+                    if (current.GetChunkState(lastChunkIndex) != PendingChunkState.Waiting)
+                    {
+                        continue;
+                    }
 
-                ArraySlice<byte> buffer = current.GetBuffer(lastChunkIndex);
-                bool canWrite = CanSerializeBufferInBits(buffer, Math.Min(sendableBits, message.UnwrittenBits));
+                    ArraySlice<byte> buffer = current.GetBuffer(lastChunkIndex);
+                    bool canWrite = CanSerializeBufferInBitsIncludingFragmentHeaderSize(buffer, Math.Min(sendableBits, message.UnwrittenBits));
 
-                if (!canWrite)
-                    continue;
+                    if (!canWrite)
+                        continue;
 
-                // write fragment header
-                message.AddBits((uint)(int)current.Handle, fragmentHandleBits);
-                message.AddBits((uint)current.NumTotalChunks(), numFragmentsBits);
-                message.AddBits((uint)lastChunkIndex, fragmentIndexBits);
+                    // write fragment header
+                    message.AddBits((uint)(int)current.Handle, fragmentHandleBits);
+                    message.AddBits((uint)current.NumTotalChunks(), totalFragmentsBits);
+                    message.AddBits((uint)lastChunkIndex, fragmentIndexBits);
 
-                message.AddBytes(buffer.Array, buffer.StartIndex, buffer.Length);
-                sendableBits -= message.WrittenBits;
+                    message.AddBits((ulong)buffer.Length, arraySizeBits);
+                    message.AddBytes(buffer.Array, buffer.StartIndex, buffer.Length, includeLength: false);
+                    sendableBits -= message.WrittenBits;
 
-                chunkIndices.Add(new ChunkPtr(current, lastChunkIndex));
+                    chunkIndices.Add(new ChunkPtr(current, lastChunkIndex));
 
-                addedChunks++;
+                    addedChunks++;
 
-                int minExtraFragmentBits = fragmentIndexBits + numFragmentsBits + 8;
-                if (message.UnwrittenBits < minExtraFragmentBits)
-                {
-                    // message is full
-                    FinalizeSendMultipleChunkMessage(message, numChunksWriteBit, addedChunks, dataStreamStatus);
-                    message = null;
-                }
+                    int minExtraFragmentBits = fragmentIndexBits + payloadFragmentCountBits + 8;
+                    if (message.UnwrittenBits < minExtraFragmentBits)
+                    {
+                        // message is full
+                        FinalizeSendMultipleChunkMessage(message, numChunksWriteBit, addedChunks, dataStreamStatus);
+                        message = null;
+                    }
 
-                if (sendableBits < minExtraFragmentBits)
-                {
-                    // can not write a single additional chunk with single byte
-                    break;
+                    if (sendableBits < minExtraFragmentBits)
+                    {
+                        // can not write a single additional chunk with single byte
+                        break;
+                    }
                 }
             }
 
@@ -216,7 +231,10 @@ namespace Riptide.DataStreaming
                 FinalizeSendMultipleChunkMessage(message, numChunksWriteBit, addedChunks, dataStreamStatus);
                 message = null;
             }
+        }
 
+        private void UpdateCwndTimerAndIncrementCwnd(double dt, ConnectionDataStreamStatus dataStreamStatus)
+        {
             dataStreamStatus.CwndIncrementTimer -= (float)dt;
             if (dataStreamStatus.CwndIncrementTimer < 0f)
                 dataStreamStatus.CwndIncrementTimer = 0f;
@@ -230,12 +248,34 @@ namespace Riptide.DataStreaming
             }
         }
 
+        private void UpdateAndProcessExpiredEnvelopes(double dt, ConnectionDataStreamStatus dataStreamStatus)
+        {
+            // decrement expiration timers
+            for (int i = 0; i < dataStreamStatus.SendWindow.Count; i++)
+            {
+                PayloadInfo info = dataStreamStatus.SendWindow[i];
+                info.ExpirationTimer -= (float)dt;
+                dataStreamStatus.SendWindow[i] = info;
+            }
+
+            // expire envelopes in order
+            while (dataStreamStatus.SendWindow.Count > 0)
+            {
+                var envelope = dataStreamStatus.SendWindow.Peek();
+                if (envelope.ExpirationTimer > 0)
+                    break;
+
+                dataStreamStatus.SendWindow.Pop();
+                ProcessEnvelope(envelope, true);
+            }
+        }
+
         private void FinalizeSendMultipleChunkMessage(Message message, int numChunksWriteBit, int addedChunks, ConnectionDataStreamStatus dataStreamStatus)
         {
-            message.SetBits((uint)addedChunks, numChunksBits, numChunksWriteBit);
+            message.SetBits((uint)addedChunks, payloadFragmentCountBits, numChunksWriteBit);
             _messageSender.Send(message);
             lastTickStat.countSentPartialMessages++;
-            dataStreamStatus.BytesInFlight += message.WrittenBits / 8;
+            dataStreamStatus.BytesInFlight += message.BytesInUse;
             sequence++;
 
             List<ChunkPtr> containedChunkPtrs = new List<ChunkPtr>(chunkIndices.Count);
@@ -249,11 +289,7 @@ namespace Riptide.DataStreaming
                 containedChunkPtrs.Add(ptr);
             }
 
-            dataStreamStatus.SendWindow.Push(new PayloadInfo(
-                sequence,
-                message.WrittenBits / 8,
-                containedChunkPtrs
-            ));
+            AddPayloadInfoToSendWindow(message, containedChunkPtrs);
 
             chunkIndices.Clear();
         }
@@ -267,14 +303,32 @@ namespace Riptide.DataStreaming
 
             // reserve bits for writing how many chunks are included in the message,
             // this is useful when we write multiple smaller chunks in a single message.
-            message.ReserveBits(numChunksBits);
+            message.ReserveBits(payloadFragmentCountBits);
             return message;
         }
 
-        private bool CanSerializeBufferInBits(ArraySlice<byte> buffer, long bits)
+        private bool CanSerializeBufferInBitsIncludingFragmentHeaderSize(ArraySlice<byte> buffer, long bits)
         {
-            int buffsizeWithFragmentHeaderInBits = buffer.Length * 8 + numFragmentsBits + fragmentIndexBits;
+            int buffsizeWithFragmentHeaderInBits = buffer.Length * 8 + totalFragmentHeaderBits;
             return buffsizeWithFragmentHeaderInBits <= bits;
+        }
+
+        private void AddPayloadInfoToSendWindow(Message message, List<ChunkPtr> containedChunkPtrs)
+        {
+            var dataStreamStatus = _connectionDataStreamStatus.GetConnectionDSStatus();
+
+            int rtt = receiverRTTProvider.get_rtt_ms();
+            if (rtt <= 0)
+            {
+                rtt = 1000;
+            }
+
+            dataStreamStatus.SendWindow.Push(new PayloadInfo(
+                sequence,
+                message.BytesInUse,
+                containedChunkPtrs,
+                rtt / 1000f * 2f
+            ));
         }
 
         public static int debugValue = 0;
@@ -318,57 +372,61 @@ namespace Riptide.DataStreaming
                     break;
                 }
 
-                streamStatus.BytesInFlight -= envelope.Size;
-
-                AssertUtil.True(streamStatus.BytesInFlight >= 0, "streamStatus.BytesInFlight >= 0");
-
                 // distance == 0 or less, that means
                 // we have delivered enveloper or it has been lost
-
                 streamStatus.SendWindow.Pop();
 
-                bool packetLost;
-                if ((ackMask & (1UL << -distance)) == 0UL
-                    || distance < -DataStreamSettings.ackMaskBitCount)
+                bool lost = (ackMask & (1UL << -distance)) == 0UL
+                    || distance < -DataStreamSettings.ackMaskBitCount;
+
+                ProcessEnvelope(envelope, lost);
+            }
+        }
+
+        private void ProcessEnvelope(PayloadInfo envelope, bool lost)
+        {
+            var streamStatus = _connectionDataStreamStatus.GetConnectionDSStatus();
+            streamStatus.BytesInFlight -= envelope.Size;
+
+            if (lost)
+            {
+                if (streamStatus.State == CongestionControlState.SlowStart && envelope.Sequence >= minValidSequence)
                 {
-                    packetLost = true;
+                    streamStatus.SlowStartThreshold = streamStatus.Cwnd / 2;
+                    streamStatus.ResetCwnd();
+                    streamStatus.State = CongestionControlState.SlowStart;
 
-                    if (streamStatus.State == CongestionControlState.SlowStart && envelope.Sequence >= minValidSequence)
+                    // invalidate any sequences in the send window, so they wont increment or reset cwnd
+                    if (streamStatus.SendWindow.Count > 0)
                     {
-                        streamStatus.SlowStartThreshold = streamStatus.Cwnd / 2;
-                        streamStatus.ResetCwnd();
-                        streamStatus.State = CongestionControlState.SlowStart;
-
-                        // invalidate any sequences in the send window, so they wont increment or reset cwnd
                         minValidSequence = streamStatus.SendWindow.PeekLast().Sequence + 1;
                         AssertUtil.True(minValidSequence != 0, "minSequenceForSlowStartIncrement != 0");
                     }
                 }
-                else
+            }
+            else
+            {
+                if (streamStatus.State == CongestionControlState.SlowStart &&
+                    envelope.Sequence >= minValidSequence)
                 {
-                    packetLost = false;
-                    if (streamStatus.State == CongestionControlState.SlowStart &&
-                        envelope.Sequence >= minValidSequence)
+                    streamStatus.IncrementCwnd();
+
+                    if (streamStatus.Cwnd >= streamStatus.SlowStartThreshold)
                     {
-                        streamStatus.IncrementCwnd();
-
-                        if (streamStatus.Cwnd >= streamStatus.SlowStartThreshold)
-                        {
-                            streamStatus.State = CongestionControlState.CongestionAvoidance;
-                            streamStatus.CwndIncrementTimer = receiverRTTProvider.get_rtt_ms() / 1000f;
-                        }
-                        debugValue++;
+                        streamStatus.State = CongestionControlState.CongestionAvoidance;
+                        streamStatus.CwndIncrementTimer = receiverRTTProvider.get_rtt_ms() / 1000f;
                     }
+                    debugValue++;
                 }
+            }
 
-                if (packetLost)
-                {
-                    SetChunkStates(envelope.Buffers, PendingChunkState.Waiting);
-                }
-                else
-                {
-                    SetChunkStates(envelope.Buffers, PendingChunkState.Delivered);
-                }
+            if (lost)
+            {
+                SetChunkStates(envelope.Buffers, PendingChunkState.Waiting);
+            }
+            else
+            {
+                SetChunkStates(envelope.Buffers, PendingChunkState.Delivered);
             }
         }
 
@@ -383,6 +441,8 @@ namespace Riptide.DataStreaming
                 PendingBuffer buffer = ptr.Buffer;
                 AssertUtil.True(buffer != null, "buffer != null");
                 buffer.SetChunkState(chunkIndex, state);
+
+                RiptideLogger.Log(LogType.Debug, $"Delivered chunk #{chunkIndex}, delivered chunks: {buffer.NumDeliveredChunks()} / {buffer.NumTotalChunks()}");
 
                 if (buffer.IsDelivered())
                 {

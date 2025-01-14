@@ -27,6 +27,20 @@ namespace Riptide.Collections
             _array = new T[capacity];
         }
 
+        public T this[int index]
+        {
+            get
+            {
+                int idx = (_tail + index) % _array.Length;
+                return _array[idx];
+            }
+            set
+            {
+                int idx = (_tail + index) % _array.Length;
+                _array[idx] = value;
+            }
+        }
+
         public T Peek()
         {
             if (_count == 0)

@@ -51,7 +51,7 @@ namespace Riptide.DataStreaming
             if (sequence <= recvSequence)
                 return;
 
-            message.GetBits(DataStreamer.numChunksBits, out uint numChunksUInt);
+            message.GetBits(DataStreamer.payloadFragmentCountBits, out uint numChunksUInt);
             int numChunks = (int)numChunksUInt;
 
             for (int i = 0; i < numChunks; i++)
@@ -59,13 +59,14 @@ namespace Riptide.DataStreaming
                 message.GetBits(DataStreamer.fragmentHandleBits, out uint fragmentHandleUInt);
                 handle_t fragmentHandle = new handle_t((int)fragmentHandleUInt);
 
-                message.GetBits(DataStreamer.numFragmentsBits, out uint numFragmentsUInt);
+                message.GetBits(DataStreamer.totalFragmentsBits, out uint numFragmentsUInt);
                 int numFragments = (int)(numFragmentsUInt);
 
                 message.GetBits(DataStreamer.fragmentIndexBits, out uint fragmentIndexUInt);
                 int fragmentIndex = (int)(fragmentIndexUInt);
 
-                int bufflen = (int)message.GetVarULong();
+                message.GetBits(DataStreamer.arraySizeBits, out uint bufflenUInt);
+                int bufflen = (int)bufflenUInt;
 
                 UnsafeUtil.ZeroMemory(tmpbuf);
 
@@ -77,7 +78,7 @@ namespace Riptide.DataStreaming
                 int readBytes = (unreadBitsBefore - unreadBitsAfter) / 8;
 
                 FragmentAssembler fragmentAssembler = GetOrCreateAssembler(fragmentHandle, numFragments);
-                ProcessReceivedFragment(fragmentIndex, readBytes, fragmentAssembler);
+                ProcessReceivedFragment(fragmentIndex, readBytes, fragmentAssembler, fragmentHandle);
             }
 
             // ack
@@ -99,7 +100,7 @@ namespace Riptide.DataStreaming
             messageSender.Send(ackMessage);
         }
 
-        private void ProcessReceivedFragment(int fragmentIndex, int readBytes, FragmentAssembler fragmentAssembler)
+        private void ProcessReceivedFragment(int fragmentIndex, int readBytes, FragmentAssembler fragmentAssembler, handle_t fragmentHandle)
         {
             if (!fragmentAssembler.IsFragmentReceived(fragmentIndex))
             {
@@ -119,6 +120,7 @@ namespace Riptide.DataStreaming
                     slice = new ArraySlice<byte>(buf, 0, bufflen + 4);
 
                     OnReceived?.Invoke(slice);
+                    assemblerByHandle.Remove(fragmentHandle);
                 }
             }
         }

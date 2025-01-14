@@ -24,11 +24,14 @@ namespace Riptide.DataStreaming
         /// </summary>
         public List<ChunkPtr> Buffers;
 
-        public PayloadInfo(uint sequence, int size, List<ChunkPtr> buffers)
+        public float ExpirationTimer;
+
+        public PayloadInfo(uint sequence, int size, List<ChunkPtr> buffers, float expirationTimer)
         {
             Sequence = sequence;
             Size = size;
             Buffers = buffers;
+            this.ExpirationTimer = expirationTimer;
         }
     }
 }

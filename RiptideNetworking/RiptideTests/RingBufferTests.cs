@@ -99,5 +99,39 @@ namespace RiptideTests
             // headIndex: 3
             Assert.AreEqual(1, buff.PeekLast());
         }
+
+
+        [Test]
+        public void ArrayIndexingWorks()
+        {
+            RingBuffer<int> buff = new RingBuffer<int>(4);
+            buff.Push(1);
+            buff.Push(2);
+            buff.Push(3);
+            buff.Push(4);
+
+            buff.Pop();
+            buff.Pop();
+
+            // here it should look like [?, ?, 3, 4]
+
+            buff.Push(5);
+            buff.Push(6);
+
+            // here it should look like [5, 6, 3, 4]
+
+            Assert.AreEqual(3, buff[0]);
+            Assert.AreEqual(4, buff[1]);
+            Assert.AreEqual(5, buff[2]);
+            Assert.AreEqual(6, buff[3]);
+
+            buff[0] = 1337;
+            buff[2] = 69;
+
+            Assert.AreEqual(1337, buff[0]);
+            Assert.AreEqual(4, buff[1]);
+            Assert.AreEqual(69, buff[2]);
+            Assert.AreEqual(6, buff[3]);
+        }
     }
 }

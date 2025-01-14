@@ -33,7 +33,7 @@ namespace RiptideTests.DataStreaming
         [SetUp]
         public void Setup()
         {
-            status = new ConnectionDataStreamStatus(1_000_000, 1_000_000);
+            status = new ConnectionDataStreamStatus(10_000_000, 10_000_000);
 
             streamer2receiver_sender = new DataStreamTestMessageSender((message) =>
             {
@@ -43,7 +43,7 @@ namespace RiptideTests.DataStreaming
 
             messageCreator = new DataStreamTestMessageCreator();
 
-            streamer = new DataStreamer(this, messageCreator, streamer2receiver_sender, this, maxPayloadSize, Message.MaxHeaderSize + MyMath.IntCeilDiv(DataStreamer.numHeaderBits, 8));
+            streamer = new DataStreamer(this, messageCreator, streamer2receiver_sender, this, maxPayloadSize, 4);
 
             receiver2streamer_sender = new DataStreamTestMessageSender((message) =>
             {
@@ -66,6 +66,37 @@ namespace RiptideTests.DataStreaming
         {
             int len = maxPayloadSize - 4;
             byte[] buffer = TestUtil.GenerateRandomByteArray(maxPayloadSize);
+
+            // write len of payload
+            buffer[0] = (byte)(len & 0xFF);
+            buffer[1] = (byte)(len >> 8 & 0xFF);
+            buffer[2] = (byte)(len >> 16 & 0xFF);
+            buffer[3] = (byte)(len >> 24 & 0xFF);
+
+            buffer[0 + 4] = 0xDE;
+            buffer[1 + 4] = 0xAD;
+            buffer[2 + 4] = 0xBE;
+            buffer[3 + 4] = 0xEF;
+            buffer[buffer.Length - 4] = 0xDE;
+            buffer[buffer.Length - 3] = 0xAD;
+            buffer[buffer.Length - 2] = 0xBE;
+            buffer[buffer.Length - 1] = 0xEF;
+
+            PendingBuffer pb = new PendingBuffer();
+            pb.Construct(buffer, maxPayloadSize);
+            status.PendingBuffers.Add(pb);
+
+            streamer.Tick(0.1);
+            receiver.Tick(0.1);
+
+            TestUtil.AssertByteArraysEqual(buffer, recvBytes);
+        }
+
+        [Test]
+        public void Simple_TestBufferIsReceived_2()
+        {
+            int len = 2_371_224 - 4;
+            byte[] buffer = TestUtil.GenerateRandomByteArray(2_371_224);
 
             // write len of payload
             buffer[0] = (byte)(len & 0xFF);

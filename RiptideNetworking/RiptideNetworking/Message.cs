@@ -20,10 +20,12 @@ namespace Riptide
         Notify = MessageHeader.Notify,
         /// <summary>Guarantees neither delivery nor order.</summary>
         Unreliable = MessageHeader.Unreliable,
+
+        DataStream = MessageHeader.DataStream,
+        DataStreamAck = MessageHeader.DataStreamAck,
+
         /// <summary>Guarantees delivery but not order.</summary>
         Reliable = MessageHeader.Reliable,
-
-        DataStream = MessageHeader.DataStream
     }
 
     /// <summary>Provides functionality for converting data to bytes and vice versa.</summary>
@@ -265,6 +267,11 @@ namespace Riptide
                 readBit = UnreliableHeaderBits;
                 writeBit = UnreliableHeaderBits;
                 SendMode = MessageSendMode.Unreliable;
+
+                if (header == MessageHeader.DataStream)
+                    SendMode = MessageSendMode.DataStream;
+                else if (header == MessageHeader.DataStreamAck)
+                    SendMode = MessageSendMode.DataStreamAck;
             }
         }
         #endregion

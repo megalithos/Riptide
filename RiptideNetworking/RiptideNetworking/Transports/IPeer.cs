@@ -26,6 +26,10 @@ namespace Riptide.Transports
         /// <summary>A notify message.</summary>
         Notify,
 
+        DataStream,
+
+        DataStreamAck,
+
         /// <summary>A reliable user message.</summary>
         Reliable,
         /// <summary>An internal reliable welcome message.</summary>
@@ -34,10 +38,6 @@ namespace Riptide.Transports
         ClientConnected,
         /// <summary>An internal reliable client disconnected message.</summary>
         ClientDisconnected,
-
-        DataStream,
-
-        DataStreamChunkAck,
     }
 
     /// <summary>Defines methods, properties, and events which every transport's server <i>and</i> client must implement.</summary>

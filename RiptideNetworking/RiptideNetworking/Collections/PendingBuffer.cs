@@ -132,6 +132,8 @@ namespace Riptide.Collections
             return NumTotalChunks() == numDeliveredChunks;
         }
 
+        public int NumDeliveredChunks() => numDeliveredChunks;
+
         public int NumTotalChunks() { return totalChunks; }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

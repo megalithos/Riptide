@@ -4,6 +4,7 @@
 // https://github.com/RiptideNetworking/Riptide/blob/main/LICENSE.md
 
 using Riptide.Transports;
+using Riptide.Transports.Udp;
 using Riptide.Utils;
 using System;
 using System.Collections.Generic;
@@ -166,6 +167,20 @@ namespace Riptide
                     return;
 
                 e.FromConnection.ProcessNotify(e.DataBuffer, e.Amount, message);
+            }
+            else if (message.SendMode == MessageSendMode.DataStream)
+            {
+                // TODO: min check?
+                Buffer.BlockCopy(e.DataBuffer, 1, message.Data, 1, e.Amount - 1);
+                UdpConnection conn = (UdpConnection)e.FromConnection;
+                conn.HandleDataStreamChunkReceived(message);
+            }
+            else if (message.SendMode == MessageSendMode.DataStreamAck)
+            {
+                // TODO: min check?
+                Buffer.BlockCopy(e.DataBuffer, 1, message.Data, 1, e.Amount - 1);
+                UdpConnection conn = (UdpConnection)e.FromConnection;
+                conn.HandleDataStreamChunkAckReceived(message);
             }
             else if (message.SendMode == MessageSendMode.Unreliable)
             {

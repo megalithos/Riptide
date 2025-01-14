@@ -20,7 +20,8 @@ namespace RiptideTests.DataStreaming
         private ConnectionDataStreamStatus status;
         private DataStreamer streamer;
         private DataReceiver receiver;
-        private const int maxPayloadSize = 1212;
+        private readonly int maxPendingBufferBufferSize =
+            DataStreamSettings.c_maxPayloadSize - MyMath.IntCeilDiv(DataStreamer.totalFragmentHeaderBits + DataStreamer.totalSubheaderBits + 4, 8);
         private byte[] recvBytes;
         private DataStreamTestMessageSender receiver2streamer_sender;
         private DataStreamTestMessageSender streamer2receiver_sender;
@@ -34,6 +35,15 @@ namespace RiptideTests.DataStreaming
         private int measured_cwnd;
         private PendingBuffer deliveredPb;
         private bool dropSinglePacket = false;
+
+        // -1: no drop
+        // 0: 10%
+        // 1: 20%
+        // 2: 30%
+        // 3: 40%
+        // 4: 50%
+        // 9: 100%
+        private int dropChance = -1;
 
         [SetUp]
         public void Setup()
@@ -57,6 +67,9 @@ namespace RiptideTests.DataStreaming
                 {
                     dropSinglePacket = false;
                 }
+                else if (dropChance >= 0 && prng.Next(10) <= dropChance)
+                {
+                }
                 else
                 {
                     receiverList.Add(
@@ -69,7 +82,7 @@ namespace RiptideTests.DataStreaming
 
             messageCreator = new DataStreamTestMessageCreator();
 
-            streamer = new DataStreamer(this, messageCreator, streamer2receiver_sender, this, maxPayloadSize, MyMath.IntCeilDiv(4 + DataStreamer.numHeaderBits, 8));
+            streamer = new DataStreamer(this, messageCreator, streamer2receiver_sender, this, maxPendingBufferBufferSize, 4);
 
             receiver2streamer_sender = new DataStreamTestMessageSender((Message message) =>
             {
@@ -80,7 +93,7 @@ namespace RiptideTests.DataStreaming
                     size = MyMath.IntCeilDiv(message.WrittenBits, 8)
                 });
             });
-            receiver = new DataReceiver(maxPayloadSize, receiver2streamer_sender, messageCreator);
+            receiver = new DataReceiver(maxPendingBufferBufferSize, receiver2streamer_sender, messageCreator);
 
             recvBytes = null;
             receiver.OnReceived += (ArraySlice<byte> bytes) =>
@@ -95,6 +108,9 @@ namespace RiptideTests.DataStreaming
             {
                 deliveredPb = pb;
             };
+
+            dropChance = -1;
+            prng = null;
         }
 
         private float[] frame_dts = new float[] { 0.01666f };
@@ -106,7 +122,7 @@ namespace RiptideTests.DataStreaming
             int dtIndex = 0;
             long prevCwnd = 1229;
 
-            PendingBuffer pb = TestUtil.CreateBuffer((int)(initialSlowStartThreshold * 1.5f), maxPayloadSize, out byte[] testbuf);
+            PendingBuffer pb = TestUtil.CreateBuffer((int)(initialSlowStartThreshold * 1.5f), maxPendingBufferBufferSize, out byte[] testbuf);
 
             status.PendingBuffers.Add(pb);
 
@@ -149,6 +165,61 @@ namespace RiptideTests.DataStreaming
             TestUtil.AssertByteArraysEqual(testbuf, recvBytes);
         }
 
+
+        private TestUtil.TestPRNG prng;
+        [Test]
+        public void Test_DeliveredWithLoss()
+        {
+            prng = new TestUtil.TestPRNG(1337);
+            dropChance = 4; // 50%
+            double testSimulationDuration = 30.0;
+
+            int dtIndex = 0;
+            long prevCwnd = 1229;
+
+            PendingBuffer pb = TestUtil.CreateBuffer((int)2_000_000, maxPendingBufferBufferSize, out byte[] testbuf);
+
+            status.PendingBuffers.Add(pb);
+            int iteration = -1;
+
+            while (simulationTime <= testSimulationDuration)
+            {
+                iteration++;
+                // advance time
+                float dt = frame_dts[dtIndex];
+                simulationTime += dt;
+                dtIndex = (dtIndex + 1) % frame_dts.Length;
+
+                streamer.Tick(dt);
+
+                var tickstat = streamer.GetLastTickStat();
+                if (tickstat.countSentFullBuffers > 0)
+                {
+                    Console.WriteLine($"simulationTime: {simulationTime:F3}, sentFullBuffers: {tickstat.countSentFullBuffers}, iteration: #{iteration}");
+                }
+
+                receiver.Tick(dt);
+                process_messages(receiverList, (Message m) => {
+                    receiver.HandleChunkReceived(m);
+                });
+                process_messages(streamerList, (Message m) => {
+                    streamer.HandleChunkAck(m);
+                });
+
+                foreach (var m in receiverList)
+                {
+                    if (!m.remove) continue;
+
+                    measured_cwnd -= m.size;
+                }
+
+                receiverList.RemoveAll(m => m.remove);
+                streamerList.RemoveAll(m => m.remove);
+            }
+
+            TestUtil.AssertByteArraysEqual(testbuf, recvBytes);
+        }
+
         [Test]
         public void Test_SlowStartToCongestionAvoidanceTransition_AndEventuallyDelivered()
         {
@@ -160,7 +231,7 @@ namespace RiptideTests.DataStreaming
             int dtIndex = 0;
             long prevCwnd = DataStreamSettings.initialCwndSize;
 
-            PendingBuffer pb = TestUtil.CreateBuffer((int)(initialSlowStartThreshold * 3f), maxPayloadSize, out byte[] testbuf);
+            PendingBuffer pb = TestUtil.CreateBuffer((int)(initialSlowStartThreshold * 3f), maxPendingBufferBufferSize, out byte[] testbuf);
 
             status.PendingBuffers.Add(pb);
 
@@ -259,7 +330,7 @@ namespace RiptideTests.DataStreaming
             int dtIndex = 0;
             long prevCwnd = DataStreamSettings.initialCwndSize;
 
-            PendingBuffer pb = TestUtil.CreateBuffer((int)(initialSlowStartThreshold * 3f), maxPayloadSize, out byte[] testbuf);
+            PendingBuffer pb = TestUtil.CreateBuffer((int)(initialSlowStartThreshold * 3f), maxPendingBufferBufferSize, out byte[] testbuf);
 
             status.PendingBuffers.Add(pb);
 
@@ -384,7 +455,7 @@ namespace RiptideTests.DataStreaming
             int dtIndex = 0;
             long prevCwnd = DataStreamSettings.initialCwndSize;
 
-            PendingBuffer pb = TestUtil.CreateBuffer((int)(initialSlowStartThreshold * 3f), maxPayloadSize, out byte[] testbuf);
+            PendingBuffer pb = TestUtil.CreateBuffer((int)(initialSlowStartThreshold * 3f), maxPendingBufferBufferSize, out byte[] testbuf);
 
             status.PendingBuffers.Add(pb);
 

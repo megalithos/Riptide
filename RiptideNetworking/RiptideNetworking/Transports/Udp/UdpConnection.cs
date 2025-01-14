@@ -8,12 +8,13 @@ using Riptide.DataStreaming;
 using Riptide.Utils;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Net;
 
 namespace Riptide.Transports.Udp
 {
     /// <summary>Represents a connection to a <see cref="UdpServer"/> or <see cref="UdpClient"/>.</summary>
-    public class UdpConnection : Connection, IEquatable<UdpConnection>, IMessageCreator, IMessageSender, IConnectionDSStatusProvider, IReceiverRTTProvider
+    public class UdpConnection : Connection, IEquatable<UdpConnection>, IMessageSender, IConnectionDSStatusProvider, IReceiverRTTProvider
     {
         /// <summary>The endpoint representing the other end of the connection.</summary>
         public readonly IPEndPoint RemoteEndPoint;
@@ -24,19 +25,14 @@ namespace Riptide.Transports.Udp
         private readonly ConnectionDataStreamStatus dataStreamStatus;
 
         private readonly DataStreamer dataStreamer;
+        private readonly DataReceiver dataReceiver;
 
         private handle_t nextHandle = new handle_t(1);
 
-        // TODO: wastes couple bytes I think, since riptide message's max payload
-        // size includes notify header bits but we are using our custom header.
-        // At time of writing, this is faster to get working by just using riptide message's
-        // write operations (instead of using custom bit stream). Since we use 
-        // riptide message's write ops we must conform to it's limitations.
-        /// <summary>
-        /// Maximum amount of bytes we can add to a message.
-        /// </summary>
-        private readonly int maxPayloadBits = DataStreamSettings.c_maxPayloadSize * 8 - DataStreamer.numHeaderBits - 4; // -4 for unreliable header
-        private readonly int maxHeaderSize = MyMath.IntCeilDiv(4 + DataStreamer.numHeaderBits, 8); // 4 for unreliable header
+        private readonly int maxPayloadBytes = DataStreamSettings.c_maxPayloadSize;
+
+        private readonly int maxPendingBufferSize =
+                DataStreamSettings.c_maxPayloadSize - MyMath.IntCeilDiv(DataStreamer.totalFragmentHeaderBits + DataStreamer.totalSubheaderBits + 4, 8);
 
         /// <summary>Initializes the connection.</summary>
         /// <param name="remoteEndPoint">The endpoint representing the other end of the connection.</param>
@@ -46,20 +42,36 @@ namespace Riptide.Transports.Udp
             RemoteEndPoint = remoteEndPoint;
             this.peer = peer;
             dataStreamStatus = new ConnectionDataStreamStatus(DataStreamSettings.initialCwndSize, DataStreamSettings.maxCwnd);
-            dataStreamer = new DataStreamer(this, this, this, this, maxPayloadBits / 8, maxHeaderSize);
+            dataStreamer = new DataStreamer(this, new StreamerMessageCreator(), this, this, maxPayloadBytes, 4);
+            dataReceiver = new DataReceiver(maxPayloadBytes, this, new ReceiverMessageCreator());
+
+            dataStreamer.OnDelivered += (PendingBuffer pb) =>
+            {
+                this.OnStreamDelivered?.Invoke(pb.Handle);
+            };
+
+            dataReceiver.OnReceived += (ArraySlice<byte> slice) =>
+            {
+                byte[] buff = new byte[slice.Length];
+                Buffer.BlockCopy(slice.Array, slice.StartIndex, buff, 0, slice.Length);
+                OnStreamReceived?.Invoke(buff);
+            };
         }
 
         public handle_t BeginStream(int channel, byte[] buffer, int startIndex, int numBytes)
         {
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-            if (startIndex < 0 || startIndex >= buffer.Length)
-                throw new ArgumentOutOfRangeException(nameof(startIndex), "Start index is out of range.");
-            if (numBytes < 0 || startIndex + numBytes > buffer.Length)
-                throw new ArgumentOutOfRangeException(nameof(numBytes), "Number of bytes exceeds buffer length.");
+            ValidateArgs(buffer, startIndex, numBytes);
 
             PendingBuffer pendingBuffer = new PendingBuffer();
-            pendingBuffer.Construct(buffer, maxPayloadBits);
+            int len = buffer.Length;
+            byte[] buffWithLength = new byte[len + 4];
+            buffWithLength[0] = (byte)(len & 0xFF);
+            buffWithLength[1] = (byte)(len >> 8 & 0xFF);
+            buffWithLength[2] = (byte)(len >> 16 & 0xFF);
+            buffWithLength[3] = (byte)(len >> 24 & 0xFF);
+            Buffer.BlockCopy(buffer, 0, buffWithLength, 4, len);
+
+            pendingBuffer.Construct(buffWithLength, maxPendingBufferSize);
             pendingBuffer.Handle = nextHandle;
             nextHandle++;
 
@@ -68,23 +80,35 @@ namespace Riptide.Transports.Udp
             return pendingBuffer.Handle;
         }
 
+        private static void ValidateArgs(byte[] buffer, int startIndex, int numBytes)
+        {
+            if (buffer == null)
+                throw new ArgumentNullException(nameof(buffer));
+            if (startIndex < 0 || startIndex >= buffer.Length)
+                throw new ArgumentOutOfRangeException(nameof(startIndex), "Start index is out of range.");
+            if (numBytes < 0 || startIndex + numBytes > buffer.Length)
+                throw new ArgumentOutOfRangeException(nameof(numBytes), "Number of bytes exceeds buffer length.");
+        }
+
         public void Tick(double dt)
         {
             dataStreamer.Tick(dt);
+            dataReceiver.Tick(dt);
         }
 
         public void HandleDataStreamChunkReceived(Message message)
         {
+            dataReceiver.HandleChunkReceived(message);
         }
 
         public void HandleDataStreamChunkAckReceived(Message message)
         {
-
+            dataStreamer.HandleChunkAck(message);
         }
 
         public event Action<handle_t> OnStreamDelivered;
 
-        public event Action<handle_t> OnStreamReceived;
+        public event Action<byte[]> OnStreamReceived;
 
         /// <inheritdoc/>
         protected internal override void Send(byte[] dataBuffer, int amount)
@@ -113,11 +137,6 @@ namespace Riptide.Transports.Udp
         public override int GetHashCode()
         {
             return -288961498 + EqualityComparer<IPEndPoint>.Default.GetHashCode(RemoteEndPoint);
-        }
-
-        public Message Create()
-        {
-            return Message.Create(MessageSendMode.DataStream);
         }
 
         public void Send(Message message)

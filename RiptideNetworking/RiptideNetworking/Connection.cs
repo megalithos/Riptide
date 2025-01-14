@@ -173,7 +173,9 @@ namespace Riptide
                 Send(Message.ByteBuffer, byteAmount);
                 Metrics.SentNotify(byteAmount);
             }
-            else if (message.SendMode == MessageSendMode.Unreliable)
+            else if (message.SendMode == MessageSendMode.Unreliable ||
+                message.SendMode == MessageSendMode.DataStream ||
+                message.SendMode == MessageSendMode.DataStreamAck)
             {
                 int byteAmount = message.BytesInUse;
                 Buffer.BlockCopy(message.Data, 0, Message.ByteBuffer, 0, byteAmount);

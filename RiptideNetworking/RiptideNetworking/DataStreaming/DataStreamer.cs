@@ -259,16 +259,12 @@ namespace Riptide.DataStreaming
             var dataStreamStatus = _connectionDataStreamStatus.GetConnectionDSStatus();
 
             int rtt = receiverRTTProvider.get_rtt_ms();
-            if (rtt <= 0)
-            {
-                rtt = 1000;
-            }
 
             dataStreamStatus.SendWindow.Push(new PayloadInfo(
                 sequence,
                 message.BytesInUse,
                 containedChunkPtrs,
-                rtt / 1000f * 2f
+                (float)Math.Max(rtt / 1000f * 2, 0.1) 
             ));
         }
 

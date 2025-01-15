@@ -50,6 +50,8 @@ namespace Riptide.DataStreaming
         public void IncrementCwnd()
         {
             Cwnd += initialCwnd;
+            if (Cwnd > DataStreamSettings.maxCwnd)
+                Cwnd = DataStreamSettings.maxCwnd;
         }
 
         public ConnectionDataStreamStatus(int initialCwnd, int initialSlowStartThreshold)

@@ -63,6 +63,7 @@
     <UPMSourceFiles Remove="Transports\Udp\ReceiverMessageCreator.cs" />
     <UPMSourceFiles Remove="Transports\Udp\StreamerMessageCreator.cs" />
     <UPMSourceFiles Remove="Utils\AssertUtil.cs" />
+    <UPMSourceFiles Remove="Utils\ByteAmount.cs" />
     <UPMSourceFiles Remove="Utils\MyMath.cs" />
     <UPMSourceFiles Remove="Utils\UnsafeUtil.cs" />
   </ItemGroup>

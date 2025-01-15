@@ -10,6 +10,7 @@ using Riptide.DataStreaming;
 using Riptide.Utils;
 using System;
 using System.Collections.Generic;
+using System.Net.Sockets;
 
 namespace RiptideTests.DataStreaming
 {
@@ -48,6 +49,7 @@ namespace RiptideTests.DataStreaming
         [SetUp]
         public void Setup()
         {
+            rtt = 200;
             measured_cwnd = 0;
             simulationTime = 0.0;
             receiverList = new List<OnFlightTestMessage>();
@@ -113,7 +115,7 @@ namespace RiptideTests.DataStreaming
             prng = null;
         }
 
-        private float[] frame_dts = new float[] { 0.01666f };
+        private float[] frame_dts = new float[] { 0.025f };
         [Test]
         public void Test_SlowStartGrowsExponentially_AndEventuallyFullyReceived()
         {
@@ -165,6 +167,54 @@ namespace RiptideTests.DataStreaming
             TestUtil.AssertByteArraysEqual(testbuf, recvBytes);
         }
 
+        [Test]
+        public void Test_HugeBufferStreamDoesNotExceedMaxCwnd()
+        {
+            double testSimulationDuration = 30.0;
+
+            int dtIndex = 0;
+            long prevCwnd = 1229;
+
+            int ssthresh = 10_000_000;
+            status = new ConnectionDataStreamStatus(DataStreamSettings.initialCwndSize, ssthresh);
+
+            PendingBuffer pb = TestUtil.CreateBuffer((int)(ssthresh * 1.5f), maxPendingBufferBufferSize, out byte[] testbuf);
+
+            status.PendingBuffers.Add(pb);
+
+            while (simulationTime <= testSimulationDuration)
+            {
+                // advance time
+                float dt = frame_dts[dtIndex];
+                simulationTime += dt;
+                dtIndex = (dtIndex + 1) % frame_dts.Length;
+
+                streamer.Tick(dt);
+                receiver.Tick(dt);
+                process_messages(receiverList, (Message m) => {
+                    receiver.HandleChunkReceived(m);
+                });
+                process_messages(streamerList, (Message m) => {
+                    streamer.HandleChunkAck(m);
+                });
+
+                if (measured_cwnd > DataStreamSettings.maxCwnd)
+                    Assert.Fail($"should not exceed maxCwnd. measured_cwnd: {new ByteAmount(measured_cwnd)}, max cwnd: {new ByteAmount(DataStreamSettings.maxCwnd)}");
+
+                foreach (var m in receiverList)
+                {
+                    if (!m.remove) continue;
+
+                    measured_cwnd -= m.size;
+                }
+
+                receiverList.RemoveAll(m => m.remove);
+                streamerList.RemoveAll(m => m.remove);
+            }
+
+            TestUtil.AssertByteArraysEqual(testbuf, recvBytes);
+        }
+
 
         private TestUtil.TestPRNG prng;
         [Test]
@@ -172,6 +222,61 @@ namespace RiptideTests.DataStreaming
         {
             prng = new TestUtil.TestPRNG(1337);
             dropChance = 4; // 50%
+            double testSimulationDuration = 30.0;
+
+            int dtIndex = 0;
+            long prevCwnd = 1229;
+
+            PendingBuffer pb = TestUtil.CreateBuffer(2_371_224, maxPendingBufferBufferSize, out byte[] testbuf);
+            byte[] originalBufferHash = TestUtil.HashBytes(testbuf);
+
+            status.PendingBuffers.Add(pb);
+            int iteration = -1;
+
+            while (simulationTime <= testSimulationDuration)
+            {
+                iteration++;
+                // advance time
+                float dt = frame_dts[dtIndex];
+                simulationTime += dt;
+                dtIndex = (dtIndex + 1) % frame_dts.Length;
+
+                streamer.Tick(dt);
+
+                var tickstat = streamer.GetLastTickStat();
+                if (tickstat.countSentFullBuffers > 0)
+                {
+                    Console.WriteLine($"simulationTime: {simulationTime:F3}, sentFullBuffers: {tickstat.countSentFullBuffers}, iteration: #{iteration}");
+                }
+
+                receiver.Tick(dt);
+                process_messages(receiverList, (Message m) => {
+                    receiver.HandleChunkReceived(m);
+                });
+                process_messages(streamerList, (Message m) => {
+                    streamer.HandleChunkAck(m);
+                });
+
+                foreach (var m in receiverList)
+                {
+                    if (!m.remove) continue;
+
+                    measured_cwnd -= m.size;
+                }
+
+                receiverList.RemoveAll(m => m.remove);
+                streamerList.RemoveAll(m => m.remove);
+            }
+
+            TestUtil.AssertByteArraysEqual(testbuf, recvBytes);
+            byte[] actualHash = TestUtil.HashBytes(recvBytes);
+            TestUtil.AssertByteArraysEqual(originalBufferHash, actualHash);
+        }
+
+        [Test]
+        public void Test_DeliveredWithLowPing()
+        {
+            rtt = (int)Math.Round(frame_dts[0] * 1000f);
             double testSimulationDuration = 30.0;
 
             int dtIndex = 0;
@@ -573,9 +678,10 @@ namespace RiptideTests.DataStreaming
             }
         }
 
+        private int rtt;
         public int get_rtt_ms()
         {
-            return 200;
+            return rtt;
         }
 
         public ConnectionDataStreamStatus GetConnectionDSStatus()

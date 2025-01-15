@@ -18,7 +18,7 @@ namespace Riptide.DataStreaming
         public const int initialCwndSize = c_maxPayloadSize;
         public const int maxSendWindowElements = 1024;
 
-        public const int maxCwnd = 1024 * 1024; // ~1MB
+        public const int maxCwnd = 1024 * 1024; // 1 MiB
         public const int ackMaskBitCount = sizeof(ulong) * 8;
     }
 }

@@ -40,7 +40,7 @@ namespace Riptide.Transports.Udp
             RemoteEndPoint = remoteEndPoint;
             this.peer = peer;
             dataStreamStatus = new ConnectionDataStreamStatus(DataStreamSettings.initialCwndSize, DataStreamSettings.maxCwnd);
-            dataStreamer = new DataStreamer(this, new StreamerMessageCreator(), this, this, maxPendingBufferSize, 4);
+            dataStreamer = new DataStreamer(this, new StreamerMessageCreator(), this, this, maxPendingBufferSize, 4, 32);
             dataReceiver = new DataReceiver(maxPendingBufferSize, this, new ReceiverMessageCreator());
 
             dataStreamer.OnDelivered += (PendingBuffer pb) =>

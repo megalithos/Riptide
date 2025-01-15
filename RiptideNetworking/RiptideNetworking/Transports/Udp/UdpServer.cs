@@ -46,25 +46,20 @@ namespace Riptide.Transports.Udp
             OpenSocket(listenAddress, port);
         }
 
-        protected override void OnTick()
+        public override void Tick(float dt)
         {
-            base.OnTick();
+            base.Tick(dt);
 
-            TickConnections();
+            TickConnections(dt);
         }
 
-        private Stopwatch stopwatch = new Stopwatch();
-        private void TickConnections()
+        private void TickConnections(float dt)
         {
-            double dt = stopwatch.Elapsed.TotalSeconds;
-
             foreach (var kvp in connections)
             {
                 UdpConnection current = (UdpConnection)kvp.Value;
                 current.Tick(dt);
             }
-
-            stopwatch.Restart();
         }
 
         /// <summary>Decides what to do with a connection attempt.</summary>

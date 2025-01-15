@@ -168,12 +168,17 @@ namespace RiptideTests.DataStreaming
         }
 
         [Test]
-        public void Test_HugeBufferStreamDoesNotExceedMaxCwnd()
+        public void Test_HugeBufferStreamDoesNotExceedMaxCwnd_AndCwndOnlyGrows()
         {
+            streamer = new DataStreamer(this, messageCreator, streamer2receiver_sender, this, maxPendingBufferBufferSize, 4, 32);
+            streamer.OnDelivered += (PendingBuffer pendingBuffer) =>
+            {
+                deliveredPb = pendingBuffer;
+            };
+
             double testSimulationDuration = 30.0;
 
             int dtIndex = 0;
-            long prevCwnd = 1229;
 
             int ssthresh = 10_000_000;
             status = new ConnectionDataStreamStatus(DataStreamSettings.initialCwndSize, ssthresh);
@@ -181,6 +186,8 @@ namespace RiptideTests.DataStreaming
             PendingBuffer pb = TestUtil.CreateBuffer((int)(ssthresh * 1.5f), maxPendingBufferBufferSize, out byte[] testbuf);
 
             status.PendingBuffers.Add(pb);
+            long prevCwnd = status.Cwnd;
+            int total = 0;
 
             while (simulationTime <= testSimulationDuration)
             {
@@ -200,6 +207,20 @@ namespace RiptideTests.DataStreaming
 
                 if (measured_cwnd > DataStreamSettings.maxCwnd)
                     Assert.Fail($"should not exceed maxCwnd. measured_cwnd: {new ByteAmount(measured_cwnd)}, max cwnd: {new ByteAmount(DataStreamSettings.maxCwnd)}");
+
+                var tickstat = streamer.GetLastTickStat();
+                if (tickstat.countSentFullBuffers > 0)
+                {
+                    total += tickstat.countSentFullBuffers;
+                    Console.WriteLine($"simulationTime: {simulationTime:F3}, sent buffers: {tickstat.countSentFullBuffers}, cwnd: {status.Cwnd}, total sent: {total}");
+                }
+
+                if (status.Cwnd != prevCwnd)
+                {
+                    Assert.IsTrue(status.Cwnd > prevCwnd, "cwnd should only increase in size");
+
+                    prevCwnd = status.Cwnd;
+                }
 
                 foreach (var m in receiverList)
                 {

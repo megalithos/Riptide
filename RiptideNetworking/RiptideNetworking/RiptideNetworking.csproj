@@ -47,6 +47,7 @@
     <UPMSourceFiles Remove="Collections\PendingChunkState.cs" />
     <UPMSourceFiles Remove="Collections\RingBuffer.cs" />
     <UPMSourceFiles Remove="Collections\SimpleArrayPool.cs" />
+    <UPMSourceFiles Remove="DataStreaming\AckMask.cs" />
     <UPMSourceFiles Remove="DataStreaming\ChunkPtr.cs" />
     <UPMSourceFiles Remove="DataStreaming\CongestionControlState.cs" />
     <UPMSourceFiles Remove="DataStreaming\ConnectionDataStreamStatus.cs" />

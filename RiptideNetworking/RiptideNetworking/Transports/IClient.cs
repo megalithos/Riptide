@@ -24,5 +24,6 @@ namespace Riptide.Transports
 
         /// <summary>Closes the connection to the server.</summary>
         void Disconnect();
+        void Tick(float dt);
     }
 }

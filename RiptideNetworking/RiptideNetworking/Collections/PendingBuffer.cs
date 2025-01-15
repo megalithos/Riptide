@@ -29,6 +29,8 @@ namespace Riptide.Collections
 
         public handle_t Handle;
 
+        public int droppedCount;
+
         public void Construct(byte[] buffer, int maxChunkSize)
         {
             ValidateArgs(buffer, maxChunkSize);

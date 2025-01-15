@@ -141,6 +141,11 @@ namespace Riptide
             return true;
         }
 
+        public void Tick(float dt)
+        {
+            transport.Tick(dt);
+        }
+
         /// <summary>Subscribes appropriate methods to the transport's events.</summary>
         private void SubToTransportEvents()
         {

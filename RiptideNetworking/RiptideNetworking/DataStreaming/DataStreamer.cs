@@ -11,6 +11,7 @@ using System.CodeDom;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -63,13 +64,15 @@ namespace Riptide.DataStreaming
         private readonly IReceiverRTTProvider receiverRTTProvider;
         private readonly int maxPayloadSize;
         private readonly int riptideHeaderSizeBits;
+        private readonly int maxSendPacketsPerTick;
 
         public DataStreamer(IConnectionDSStatusProvider connectionDataStreamStatusProvider,
                             IMessageCreator messageCreator,
                             IMessageSender messageSender,
                             IReceiverRTTProvider receiverRTTProvider,
                             int maxPayloadSizeBytes,
-                            int riptideHeaderSizeBits)
+                            int riptideHeaderSizeBits,
+                            int maxSendPacketsPerTick = 0)
         {
             _connectionDataStreamStatus = connectionDataStreamStatusProvider;
             _messageCreator = messageCreator;
@@ -80,6 +83,7 @@ namespace Riptide.DataStreaming
 
             // +8 for one byte
             this.minMessageBitsForSend = riptideHeaderSizeBits + totalSubheaderBits + totalFragmentHeaderBits + 8;
+            this.maxSendPacketsPerTick = maxSendPacketsPerTick;
         }
 
         public struct tickstat_t
@@ -111,6 +115,7 @@ namespace Riptide.DataStreaming
             Message message = null;
             int numChunksWriteBit = 0;
             bool breakOuter = false;
+            int counter = 0;
 
             for (int i = 0; i < dataStreamStatus.PendingBuffers.Count; i++)
             {
@@ -150,6 +155,7 @@ namespace Riptide.DataStreaming
                     dataStreamStatus.BytesInFlight += message.BytesInUse;
 
                     _messageSender.Send(message);
+                    counter++;
                     lastTickStat.countSentFullBuffers++;
 
                     current.SetChunkState(index, PendingChunkState.OnFlight);
@@ -163,6 +169,12 @@ namespace Riptide.DataStreaming
                     sequence++;
 
                     message = null;
+
+                    if (maxSendPacketsPerTick > 0 && counter >= maxSendPacketsPerTick)
+                    {
+                        breakOuter = true;
+                        break;
+                    }
 
                     if (sendableBits <= minMessageBitsForSend)
                     {
@@ -259,6 +271,8 @@ namespace Riptide.DataStreaming
             var dataStreamStatus = _connectionDataStreamStatus.GetConnectionDSStatus();
 
             int rtt = receiverRTTProvider.get_rtt_ms();
+            if (rtt < 0)
+                rtt = 500;
 
             dataStreamStatus.SendWindow.Push(new PayloadInfo(
                 sequence,
@@ -327,6 +341,11 @@ namespace Riptide.DataStreaming
 
             if (lost)
             {
+                foreach (var chunkptr in envelope.Buffers)
+                {
+                    chunkptr.Buffer.droppedCount++;
+                }
+
                 if (streamStatus.State == CongestionControlState.SlowStart && envelope.Sequence >= minValidSequence)
                 {
                     streamStatus.SlowStartThreshold = streamStatus.Cwnd / 2;
@@ -365,6 +384,16 @@ namespace Riptide.DataStreaming
             {
                 SetChunkStates(envelope.Buffers, PendingChunkState.Delivered);
             }
+
+            if (lost)
+            {
+                RiptideLogger.Log(LogType.Debug, $"Packet #{envelope.Sequence} was LOST.");
+                foreach (var chunkptr in envelope.Buffers)
+                {
+                    RiptideLogger.Log(LogType.Debug, $"Buffer: {chunkptr.Buffer.Handle}, dropped count: {chunkptr.Buffer.droppedCount}");
+                }
+            }
+
         }
 
         private void SetChunkStates(List<ChunkPtr> list, PendingChunkState state)

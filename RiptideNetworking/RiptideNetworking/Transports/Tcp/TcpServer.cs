@@ -153,5 +153,10 @@ namespace Riptide.Transports.Tcp
 
             DataReceived?.Invoke(this, new DataReceivedEventArgs(ReceiveBuffer, amount, fromConnection));
         }
+
+        public void Tick(float dt)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

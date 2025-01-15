@@ -124,6 +124,11 @@ namespace Riptide
             RiptideLogger.Log(LogType.Info, LogName, $"Started on port {port}.");
         }
 
+        public void Tick(float dt)
+        {
+            transport.Tick(dt);
+        }
+
         /// <summary>Subscribes appropriate methods to the transport's events.</summary>
         private void SubToTransportEvents()
         {

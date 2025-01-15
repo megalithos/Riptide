@@ -26,5 +26,6 @@ namespace Riptide.Transports
 
         /// <summary>Closes all existing connections and stops listening for new connections.</summary>
         void Shutdown();
+        void Tick(float dt);
     }
 }

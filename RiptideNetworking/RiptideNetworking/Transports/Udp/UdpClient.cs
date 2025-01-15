@@ -56,6 +56,13 @@ namespace Riptide.Transports.Udp
             return true;
         }
 
+        public override void Tick(float dt)
+        {
+            base.Tick(dt);
+
+            udpConnection.Tick(dt);
+        }
+
         /// <summary>Parses <paramref name="hostAddress"/> into <paramref name="ip"/> and <paramref name="port"/>, if possible.</summary>
         /// <param name="hostAddress">The host address to parse.</param>
         /// <param name="ip">The retrieved IP.</param>

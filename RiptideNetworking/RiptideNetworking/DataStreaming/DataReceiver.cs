@@ -37,8 +37,18 @@ namespace Riptide.DataStreaming
             this.messageCreator = messageCreator;
         }
 
+        private bool shouldSendAck = false;
         public void Tick(double dt)
         {
+            if (shouldSendAck)
+            {
+                shouldSendAck = false;
+
+                Message ackMessage = messageCreator.Create();
+                ackMessage.AddUInt(recvSequence);
+                ackMessage.AddULong(ackMask);
+                messageSender.Send(ackMessage);
+            }
         }
 
         private byte[] tmpbuf = new byte[2048];
@@ -94,10 +104,7 @@ namespace Riptide.DataStreaming
 
             recvSequence = sequence;
 
-            Message ackMessage = messageCreator.Create();
-            ackMessage.AddUInt(sequence);
-            ackMessage.AddULong(ackMask);
-            messageSender.Send(ackMessage);
+            shouldSendAck = true;
         }
 
         private void ProcessReceivedFragment(int fragmentIndex, int readBytes, FragmentAssembler fragmentAssembler, handle_t fragmentHandle)

@@ -31,6 +31,8 @@ namespace Riptide.Collections
 
         public int droppedCount;
 
+        public RingBuffer<ushort> waitingIndices;
+
         public void Construct(byte[] buffer, int maxChunkSize)
         {
             ValidateArgs(buffer, maxChunkSize);
@@ -49,6 +51,12 @@ namespace Riptide.Collections
             chunkStatesPerByte = 8 / chunkStateBits;
 
             this.maxChunkSize = maxChunkSize;
+
+            waitingIndices = new RingBuffer<ushort>(totalChunks);
+            for (int i = 0; i < totalChunks; i++)
+            {
+                waitingIndices.Push((ushort)i);
+            }
         }
 
         private static void ValidateArgs(byte[] buffer, int maxChunkSize)
@@ -115,13 +123,20 @@ namespace Riptide.Collections
             if (seekStartChunkIndex < 0 || seekStartChunkIndex >= totalChunks)
                 throw new ArgumentOutOfRangeException(nameof(seekStartChunkIndex));
 
-            for (int i = seekStartChunkIndex; i < totalChunks; i++)
-            {
-                PendingChunkState state = GetChunkState(i);
-                if (state == PendingChunkState.Waiting)
-                    return i;
-            }
+            if (waitingIndices.Count > 0)
+                return waitingIndices.Peek();
+
             return -1;
+        }
+
+        public void PopWaitingIndex()
+        {
+            waitingIndices.Pop();
+        }
+
+        public void PushWaitingIndex(ushort index)
+        {
+            waitingIndices.Push(index);
         }
 
         public int GetLastChunkIndex()

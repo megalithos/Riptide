@@ -14,6 +14,7 @@ using System.Net;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml;
 
 namespace Riptide.DataStreaming
 {
@@ -159,13 +160,14 @@ namespace Riptide.DataStreaming
                     lastTickStat.countSentFullBuffers++;
 
                     current.SetChunkState(index, PendingChunkState.OnFlight);
+                    current.PopWaitingIndex();
 
                     if (dataStreamStatus.SendWindow.IsFull)
                     {
                         dataStreamStatus.SendWindow.Resize(dataStreamStatus.SendWindow.Capacity * 2);
                     }
 
-                    AddPayloadInfoToSendWindow(message, new List<ChunkPtr> { new ChunkPtr(current, index) });
+                    AddPayloadInfoToSendWindow(message, new List<ChunkPtr>(1) { new ChunkPtr(current, index) });
                     sequence++;
 
                     message = null;
@@ -387,11 +389,11 @@ namespace Riptide.DataStreaming
 
             if (lost)
             {
-                RiptideLogger.Log(LogType.Debug, $"Packet #{envelope.Sequence} was LOST.");
-                foreach (var chunkptr in envelope.Buffers)
-                {
-                    RiptideLogger.Log(LogType.Debug, $"Buffer: {chunkptr.Buffer.Handle}, dropped count: {chunkptr.Buffer.droppedCount}");
-                }
+//                RiptideLogger.Log(LogType.Debug, $"Packet #{envelope.Sequence} was LOST.");
+//                foreach (var chunkptr in envelope.Buffers)
+//                {
+//                    RiptideLogger.Log(LogType.Debug, $"Buffer: {chunkptr.Buffer.Handle}, dropped count: {chunkptr.Buffer.droppedCount}");
+//                }
             }
 
         }
@@ -408,12 +410,15 @@ namespace Riptide.DataStreaming
                 AssertUtil.True(buffer != null, "buffer != null");
                 buffer.SetChunkState(chunkIndex, state);
 
-                RiptideLogger.Log(LogType.Debug, $"Delivered chunk #{chunkIndex}, delivered chunks: {buffer.NumDeliveredChunks()} / {buffer.NumTotalChunks()}");
+                // RiptideLogger.Log(LogType.Debug, $"Delivered chunk #{chunkIndex}, delivered chunks: {buffer.NumDeliveredChunks()} / {buffer.NumTotalChunks()}");
 
                 if (buffer.IsDelivered())
                 {
                     OnDelivered?.Invoke(buffer);
                 }
+
+                if (state == PendingChunkState.Waiting)
+                    buffer.PushWaitingIndex((ushort)chunkIndex);
             }
         }
 

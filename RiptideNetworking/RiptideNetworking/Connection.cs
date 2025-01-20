@@ -4,6 +4,7 @@
 // https://github.com/RiptideNetworking/Riptide/blob/main/LICENSE.md
 
 using Riptide.Transports;
+using Riptide.Transports.Udp;
 using Riptide.Utils;
 using System;
 using System.Collections.Generic;

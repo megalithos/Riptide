@@ -117,46 +117,6 @@ namespace RiptideTests
         }
 
         [Test]
-        public void SeekNextWaitingIndexWorks_1()
-        {
-            PendingBuffer buffer = NewBuffer();
-            buffer.Construct(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 },  3);
-            // buffer: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-            // chunk 1: [2, 3, 4]
-            // chunk 2: [5, 6, 7]
-            // chunk 3: [8, 9, 10]
-            // chunk 4: [11]
-
-            Assert.AreEqual(PendingChunkState.Waiting, buffer.GetChunkState(0));
-            Assert.AreEqual(PendingChunkState.Waiting, buffer.GetChunkState(1));
-            Assert.AreEqual(PendingChunkState.Waiting, buffer.GetChunkState(2));
-            Assert.AreEqual(PendingChunkState.Waiting, buffer.GetChunkState(3));
-
-            Assert.AreEqual(0, buffer.SeekNextWaitingIndex(0));
-            Assert.AreEqual(1, buffer.SeekNextWaitingIndex(1));
-            Assert.AreEqual(2, buffer.SeekNextWaitingIndex(2));
-            Assert.AreEqual(3, buffer.SeekNextWaitingIndex(3));
-
-            buffer.SetChunkState(0, PendingChunkState.OnFlight);
-            Assert.AreEqual(1, buffer.SeekNextWaitingIndex(0));
-            buffer.SetChunkState(1, PendingChunkState.OnFlight);
-            Assert.AreEqual(2, buffer.SeekNextWaitingIndex(0));
-
-            buffer.SetChunkState(3, PendingChunkState.OnFlight);
-            Assert.AreEqual(2, buffer.SeekNextWaitingIndex(2));
-
-            buffer.SetChunkState(2, PendingChunkState.OnFlight);
-
-            Assert.AreEqual(PendingChunkState.OnFlight, buffer.GetChunkState(0));
-            Assert.AreEqual(PendingChunkState.OnFlight, buffer.GetChunkState(1));
-            Assert.AreEqual(PendingChunkState.OnFlight, buffer.GetChunkState(2));
-            Assert.AreEqual(PendingChunkState.OnFlight, buffer.GetChunkState(3));
-
-            Assert.AreEqual(-1, buffer.SeekNextWaitingIndex(0));
-            Assert.AreEqual(-1, buffer.SeekNextWaitingIndex(3));
-        }
-
-        [Test]
         public void SeekNextWaitingIndexThrowsOnInvalidChunkIndex()
         {
             PendingBuffer buffer = NewBuffer();

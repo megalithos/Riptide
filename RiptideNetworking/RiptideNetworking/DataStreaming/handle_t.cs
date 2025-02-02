@@ -9,6 +9,14 @@ using System.Text;
 
 namespace Riptide.DataStreaming
 {
+    public class handle_comparer : IComparer<handle_t>
+    {
+        public int Compare(handle_t x, handle_t y)
+        {
+            return ((int)x).CompareTo(((int)y));
+        }
+    }
+
     public struct handle_t : IEquatable<handle_t>
     {
         private readonly int _value;

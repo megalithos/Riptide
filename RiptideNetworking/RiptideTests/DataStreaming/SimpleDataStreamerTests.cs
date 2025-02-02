@@ -53,7 +53,7 @@ namespace RiptideTests.DataStreaming
             receiver = new DataReceiver(maxPayloadSize, receiver2streamer_sender, messageCreator);
 
             recvBytes = null;
-            receiver.OnReceived += (bytes) =>
+            receiver.OnReceived += (handle, bytes) =>
             {
                 recvBytes = new byte[bytes.Length];
 
@@ -85,6 +85,7 @@ namespace RiptideTests.DataStreaming
             PendingBuffer pb = new PendingBuffer();
             pb.Construct(buffer, maxPayloadSize);
             status.PendingBuffers.Add(pb);
+            pb.Handle = 1;
 
             streamer.Tick(0.1);
             receiver.Tick(0.1);
@@ -116,6 +117,7 @@ namespace RiptideTests.DataStreaming
             PendingBuffer pb = new PendingBuffer();
             pb.Construct(buffer, maxPayloadSize);
             status.PendingBuffers.Add(pb);
+            pb.Handle = 1;
 
             streamer.Tick(0.1);
             receiver.Tick(0.1);
@@ -147,6 +149,7 @@ namespace RiptideTests.DataStreaming
             PendingBuffer pb = new PendingBuffer();
             pb.Construct(buffer, maxPayloadSize);
             status.PendingBuffers.Add(pb);
+            pb.Handle = 1;
 
             streamer.Tick(0.1);
             receiver.Tick(0.1);
@@ -179,6 +182,7 @@ namespace RiptideTests.DataStreaming
             PendingBuffer pb = new PendingBuffer();
             pb.Construct(buffer, maxPayloadSize);
             status.PendingBuffers.Add(pb);
+            pb.Handle = 1;
 
             streamer.Tick(0.1);
             receiver.Tick(0.1);

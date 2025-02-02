@@ -60,7 +60,7 @@ namespace Riptide.Transports.Udp
         {
             base.Tick(dt);
 
-            udpConnection.Tick(dt);
+            udpConnection?.Tick(dt);
         }
 
         /// <summary>Parses <paramref name="hostAddress"/> into <paramref name="ip"/> and <paramref name="port"/>, if possible.</summary>

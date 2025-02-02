@@ -49,7 +49,7 @@ namespace Riptide.Transports.Udp
                 this.OnStreamDelivered?.Invoke(pb.Handle);
             };
 
-            dataReceiver.OnReceived += (ArraySlice<byte> slice) =>
+            dataReceiver.OnReceived += (handle_t handle, ArraySlice<byte> slice) =>
             {
                 byte[] buff = new byte[slice.Length - 4];
                 Buffer.BlockCopy(slice.Array, slice.StartIndex + 4, buff, 0, slice.Length - 4);
@@ -138,9 +138,12 @@ namespace Riptide.Transports.Udp
             return -288961498 + EqualityComparer<IPEndPoint>.Default.GetHashCode(RemoteEndPoint);
         }
 
+        public int sentBytes { get; private set; }
         public void Send(Message message)
         {
             base.Send(message);
+
+            sentBytes += message.BytesInUse;
         }
 
         ConnectionDataStreamStatus IConnectionDSStatusProvider.GetConnectionDSStatus()

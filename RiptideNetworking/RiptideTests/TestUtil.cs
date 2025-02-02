@@ -58,6 +58,7 @@ namespace RiptideTests
 
             PendingBuffer pb = new PendingBuffer();
             pb.Construct(buffer, (int)maxPayloadSize);
+            pb.Handle = 1;
 
             return pb;
         }

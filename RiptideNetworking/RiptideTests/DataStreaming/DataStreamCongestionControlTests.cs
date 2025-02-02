@@ -46,6 +46,9 @@ namespace RiptideTests.DataStreaming
         // 9: 100%
         private int dropChance = -1;
 
+        private List<handle_t> deliveredHandles;
+        private List<handle_t> receiverReceivedHandles;
+
         [SetUp]
         public void Setup()
         {
@@ -98,17 +101,22 @@ namespace RiptideTests.DataStreaming
             receiver = new DataReceiver(maxPendingBufferBufferSize, receiver2streamer_sender, messageCreator);
 
             recvBytes = null;
-            receiver.OnReceived += (ArraySlice<byte> bytes) =>
+            receiver.OnReceived += (handle_t handle, ArraySlice<byte> bytes) =>
             {
                 recvBytes = new byte[bytes.Length];
 
                 Buffer.BlockCopy(bytes.Array, bytes.StartIndex, recvBytes, 0, bytes.Length);
+
+                receiverReceivedHandles.Add(handle);
             };
 
             deliveredPb = null;
+            deliveredHandles = new List<handle_t>();
+            receiverReceivedHandles = new List<handle_t>();
             streamer.OnDelivered += (PendingBuffer pb) =>
             {
                 deliveredPb = pb;
+                deliveredHandles.Add(pb.Handle);
             };
 
             dropChance = -1;
@@ -293,6 +301,113 @@ namespace RiptideTests.DataStreaming
             byte[] actualHash = TestUtil.HashBytes(recvBytes);
             TestUtil.AssertByteArraysEqual(originalBufferHash, actualHash);
         }
+
+        [Test]
+        public void Test_MultipleDeliveredInOrderWithLoss()
+        {
+            rtt = 300;
+            prng = new TestUtil.TestPRNG(1337);
+            dropChance = 8; // 50%
+            double testSimulationDuration = 60.0;
+
+            int dtIndex = 0;
+            long prevCwnd = 1229;
+
+            PendingBuffer pb = TestUtil.CreateBuffer(10_000, maxPendingBufferBufferSize, out byte[] testbuf);
+            byte[] originalBufferHash = TestUtil.HashBytes(testbuf);
+            status.PendingBuffers.Add(pb);
+
+            pb = TestUtil.CreateBuffer(12_000, maxPendingBufferBufferSize, out testbuf);
+            status.PendingBuffers.Add(pb);
+            pb.Handle = 2;
+
+            pb = TestUtil.CreateBuffer(13_000, maxPendingBufferBufferSize, out testbuf);
+            status.PendingBuffers.Add(pb);
+            pb.Handle = 3;
+
+            pb = TestUtil.CreateBuffer(14_000, maxPendingBufferBufferSize, out testbuf);
+            status.PendingBuffers.Add(pb);
+            pb.Handle = 4;
+
+            pb = TestUtil.CreateBuffer(15_000, maxPendingBufferBufferSize, out testbuf);
+            status.PendingBuffers.Add(pb);
+            pb.Handle = 5;
+
+            pb = TestUtil.CreateBuffer(1234, maxPendingBufferBufferSize, out testbuf);
+            status.PendingBuffers.Add(pb);
+            pb.Handle = 6;
+
+            pb = TestUtil.CreateBuffer(500, maxPendingBufferBufferSize, out testbuf);
+            status.PendingBuffers.Add(pb);
+            pb.Handle = 7;
+
+            pb = TestUtil.CreateBuffer(500, maxPendingBufferBufferSize, out testbuf);
+            status.PendingBuffers.Add(pb);
+            pb.Handle = 8;
+
+            pb = TestUtil.CreateBuffer(500, maxPendingBufferBufferSize, out testbuf);
+            status.PendingBuffers.Add(pb);
+            pb.Handle = 9;
+
+            pb = TestUtil.CreateBuffer(5000, maxPendingBufferBufferSize, out testbuf);
+            status.PendingBuffers.Add(pb);
+            pb.Handle = 10;
+
+            int iteration = -1;
+
+            while (simulationTime <= testSimulationDuration)
+            {
+                iteration++;
+                // advance time
+                float dt = frame_dts[dtIndex];
+                simulationTime += dt;
+                dtIndex = (dtIndex + 1) % frame_dts.Length;
+
+                streamer.Tick(dt);
+
+                var tickstat = streamer.GetLastTickStat();
+                if (tickstat.countSentFullBuffers > 0)
+                {
+                    Console.WriteLine($"simulationTime: {simulationTime:F3}, sentFullBuffers: {tickstat.countSentFullBuffers}, iteration: #{iteration}");
+                }
+
+                receiver.Tick(dt);
+                process_messages(receiverList, (Message m) => {
+                    receiver.HandleChunkReceived(m);
+                });
+                process_messages(streamerList, (Message m) => {
+                    streamer.HandleChunkAck(m);
+                });
+
+                foreach (var m in receiverList)
+                {
+                    if (!m.remove) continue;
+
+                    measured_cwnd -= m.size;
+                }
+
+                receiverList.RemoveAll(m => m.remove);
+                streamerList.RemoveAll(m => m.remove);
+            }
+
+            Assert.IsTrue(deliveredHandles.Count == 10);
+
+            Assert.IsTrue(receiverReceivedHandles.Count == 10);
+            Assert.IsTrue(receiverReceivedHandles[0] == 1);
+            Assert.IsTrue(receiverReceivedHandles[1] == 2);
+            Assert.IsTrue(receiverReceivedHandles[2] == 3);
+            Assert.IsTrue(receiverReceivedHandles[3] == 4);
+            Assert.IsTrue(receiverReceivedHandles[4] == 5);
+            Assert.IsTrue(receiverReceivedHandles[5] == 6);
+            Assert.IsTrue(receiverReceivedHandles[6] == 7);
+            Assert.IsTrue(receiverReceivedHandles[7] == 8);
+            Assert.IsTrue(receiverReceivedHandles[8] == 9);
+            Assert.IsTrue(receiverReceivedHandles[9] == 10);
+
+            Assert.IsTrue(status.PendingBuffers.Count == 0, "status.PendingBuffers.Count == 0");
+            Assert.IsTrue(status.SendWindow.Count == 0, "status.SendWindow.Count == 0");
+        }
+
 
         [Test]
         public void Test_DeliveredWithLowPing()

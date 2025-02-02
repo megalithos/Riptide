@@ -26,16 +26,12 @@ namespace Riptide.DataStreaming
             _value = value;
         }
 
-        // Implicit cast from int to Handle_t
         public static implicit operator handle_t(int value) => new handle_t(value);
 
-        // Implicit cast from Handle_t to int
         public static implicit operator int(handle_t handle) => handle._value;
 
-        // Override ToString for debugging purposes
         public override string ToString() => _value.ToString();
 
-        // Equality checks
         public override bool Equals(object obj) => obj is handle_t other && Equals(other);
         public bool Equals(handle_t other) => _value == other._value;
 

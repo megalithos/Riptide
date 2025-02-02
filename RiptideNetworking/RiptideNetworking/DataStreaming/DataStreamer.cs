@@ -18,29 +18,6 @@ using System.Xml;
 
 namespace Riptide.DataStreaming
 {
-    // struct streamPacket
-    //   message riptide header id      (4  bits)  // riptide header
-    //   sequence                       (32 bits)  // subheader
-    //   containedFragments             (16 bits)  // subheader
-    //   totalFragments                 (32 bits)  // fragment header, required for reassembly
-    //   fragmentIndex                  (32 bits)  // fragment header, required for reaseembly
-    //   fragmentHandle                 (32 bits)  // fragment header, unique identifier for the whole buffer
-    //   arraySize                      (32 bits)  // fragment header, size of the fragment data
-    //   chunk0data...
-
-    // whole packet is called payload.
-    // each packet will have one and only one riptide header and subheader.
-    // but may have multiple fragment headers.
-
-    // todo:
-    //   - last chunks (small) are not batched into one packet. it might not even be
-    //     necessary since you would use this whole data streaming system
-    //     to mainly stream large buffers, so the minimal gains might not
-    //     be worth the efforts.
-
-    // summary:
-    //   - send pending buffers using congestion control
-    //   - invoke event on completion
     internal class DataStreamer
     {
         // subheader
@@ -82,7 +59,6 @@ namespace Riptide.DataStreaming
             this.riptideHeaderSizeBits = riptideHeaderSizeBits;
             this.receiverRTTProvider = receiverRTTProvider;
 
-            // +8 for one byte
             this.minMessageBitsForSend = riptideHeaderSizeBits + totalSubheaderBits + totalFragmentHeaderBits + 8;
             this.maxSendPacketsPerTick = maxSendPacketsPerTick;
         }
@@ -106,7 +82,6 @@ namespace Riptide.DataStreaming
             UpdateAndProcessExpiredEnvelopes(dt, dataStreamStatus);
             UpdateCwndTimerAndIncrementCwnd(dt, dataStreamStatus);
 
-            // calculate how many bytes we may send
             int maxSendableBytes = (int)(dataStreamStatus.Cwnd - dataStreamStatus.BytesInFlight);
             long sendableBits = ((long)maxSendableBytes) * 8;
 

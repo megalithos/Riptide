@@ -14,10 +14,6 @@ using System.Threading.Tasks;
 
 namespace Riptide.DataStreaming
 {
-    // summary:
-    //   - construct buffers out of fragments
-    //   - invoke event on buffer received
-    //   - acknowledge received packets
     internal class DataReceiver
     {
         private readonly SortedDictionary<handle_t, FragmentAssembler> assemblerByHandle;

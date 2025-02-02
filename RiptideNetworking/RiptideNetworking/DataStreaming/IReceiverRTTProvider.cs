@@ -13,9 +13,6 @@ namespace Riptide.DataStreaming
 {
     internal interface IReceiverRTTProvider
     {
-        /// <summary>
-        /// Returns in milliseconds.
-        /// </summary>
         int get_rtt_ms();
     }
 }

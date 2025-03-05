@@ -51,7 +51,9 @@ namespace Riptide
         /// <summary>The disconnection was initiated by the client.</summary>
         Disconnected,
         /// <summary>The connection's loss and/or resend rates exceeded the maximum acceptable thresholds, or a reliably sent message could not be delivered.</summary>
-        PoorConnection
+        PoorConnection,
+
+        InvalidMessageId,
     }
 
     /// <summary>Provides base functionality for <see cref="Server"/> and <see cref="Client"/>.</summary>

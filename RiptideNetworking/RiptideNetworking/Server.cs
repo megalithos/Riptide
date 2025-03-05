@@ -62,6 +62,11 @@ namespace Riptide
 
         /// <summary>Currently pending connections which are waiting to be accepted or rejected.</summary>
         private readonly List<Connection> pendingConnections;
+
+        public int PendingConnectionsCount => pendingConnections.Count;
+
+        public int TimedOutClientsCount => timedOutClients.Count;
+
         /// <summary>Currently connected clients.</summary>
         private Dictionary<ushort, Connection> clients;
         /// <summary>Clients that have timed out and need to be removed from <see cref="clients"/>.</summary>
@@ -577,6 +582,10 @@ namespace Riptide
         /// <param name="fromConnection">The client from which the message was received.</param>
         protected virtual void OnMessageReceived(Message message, Connection fromConnection)
         {
+            // skip processing of subsequent packets if we just disconnected the client.
+            if (fromConnection.IsNotConnected)
+                return;
+
             ushort messageId = (ushort)message.GetVarULong();
             if (RelayFilter != null && RelayFilter.ShouldRelay(messageId))
             {
@@ -592,7 +601,10 @@ namespace Riptide
                 if (messageHandlers.TryGetValue(messageId, out MessageHandler messageHandler))
                     messageHandler(fromConnection.Id, message);
                 else
-                    RiptideLogger.Log(LogType.Warning, LogName, $"No message handler method found for message ID {messageId}!");
+                {
+                    RiptideLogger.Log(LogType.Warning, LogName, $"No message handler method found for message ID {messageId}! Disconnecting client. id: {fromConnection.Id}");
+                    DisconnectClient(fromConnection.Id);
+                }
             }
         }
 

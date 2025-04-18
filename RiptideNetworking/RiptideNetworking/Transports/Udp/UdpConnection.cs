@@ -41,7 +41,7 @@ namespace Riptide.Transports.Udp
             RemoteEndPoint = remoteEndPoint;
             this.peer = peer;
             dataStreamStatus = new ConnectionDataStreamStatus(DataStreamSettings.initialCwndSize, DataStreamSettings.maxCwnd);
-            dataStreamer = new DataStreamer(this, new StreamerMessageCreator(), this, this, maxPendingBufferSize, 4, 32);
+            dataStreamer = new DataStreamer(this, new StreamerMessageCreator(), this, this, new DefaultRateLimitSettings(), new DefaultTimeProvider(), maxPendingBufferSize, 4, 32);
             dataReceiver = new DataReceiver(maxPendingBufferSize, this, new ReceiverMessageCreator());
 
             dataStreamer.OnDelivered += (PendingBuffer pb) =>
@@ -61,6 +61,11 @@ namespace Riptide.Transports.Udp
         {
             ValidateArgs(buffer, startIndex, numBytes);
 
+            if (!dataStreamer.CanStream(new ByteAmount(numBytes)))
+            {
+                throw new DataRateLimitExceededException();
+            }
+
             PendingBuffer pendingBuffer = new PendingBuffer();
             int len = buffer.Length;
             byte[] buffWithLength = new byte[len + 4];
@@ -74,7 +79,7 @@ namespace Riptide.Transports.Udp
             pendingBuffer.Handle = nextHandle;
             nextHandle++;
 
-            dataStreamStatus.PendingBuffers.Add(pendingBuffer);
+            dataStreamer.QueueBufferForSend(pendingBuffer);
 
             return pendingBuffer.Handle;
         }

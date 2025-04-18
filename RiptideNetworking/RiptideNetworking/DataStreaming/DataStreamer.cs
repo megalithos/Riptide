@@ -40,6 +40,8 @@ namespace Riptide.DataStreaming
         private readonly IMessageCreator _messageCreator;
         private readonly IMessageSender _messageSender;
         private readonly IReceiverRTTProvider receiverRTTProvider;
+        private IRateLimitSettings rateLimitSettings;
+        private ITimeProvider timeProvider;
         private readonly int maxPayloadSize;
         private readonly int riptideHeaderSizeBits;
         private readonly int maxSendPacketsPerTick;
@@ -48,6 +50,8 @@ namespace Riptide.DataStreaming
                             IMessageCreator messageCreator,
                             IMessageSender messageSender,
                             IReceiverRTTProvider receiverRTTProvider,
+                            IRateLimitSettings rateLimitSettings,
+                            ITimeProvider timeProvider,
                             int maxPayloadSizeBytes,
                             int riptideHeaderSizeBits,
                             int maxSendPacketsPerTick = 0)
@@ -58,15 +62,47 @@ namespace Riptide.DataStreaming
             this.maxPayloadSize = maxPayloadSizeBytes;
             this.riptideHeaderSizeBits = riptideHeaderSizeBits;
             this.receiverRTTProvider = receiverRTTProvider;
+            this.rateLimitSettings = rateLimitSettings;
 
             this.minMessageBitsForSend = riptideHeaderSizeBits + totalSubheaderBits + totalFragmentHeaderBits + 8;
             this.maxSendPacketsPerTick = maxSendPacketsPerTick;
+            this.timeProvider = timeProvider;
+            dataWindowStartTime = timeProvider.GetNowTime();
         }
 
         public struct tickstat_t
         {
             public int countSentFullBuffers;
             public int countSentPartialMessages;
+        }
+
+        private DateTime dataWindowStartTime;
+        private long dataBytesSentInWindow;
+        public bool CanStream(ByteAmount byteAmount)
+        {
+            DateTime now = timeProvider.GetNowTime();
+
+            if (now - dataWindowStartTime > rateLimitSettings.DataLimitWindow)
+            {
+                dataWindowStartTime = now;
+                dataBytesSentInWindow = 0;
+            }
+
+            if (dataBytesSentInWindow + byteAmount.Bytes > rateLimitSettings.MaxAmountPerWindow.Bytes)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        public void QueueBufferForSend(PendingBuffer pending_buffer)
+        {
+            if (pending_buffer.BufferSize == 0)
+                throw new Exception($"Buffer size is zero");
+
+            dataBytesSentInWindow += pending_buffer.BufferSize;
+            _connectionDataStreamStatus.GetConnectionDSStatus().PendingBuffers.Add(pending_buffer);
         }
 
         public tickstat_t GetLastTickStat() => lastTickStat;

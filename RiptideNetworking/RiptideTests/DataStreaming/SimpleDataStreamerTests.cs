@@ -43,7 +43,7 @@ namespace RiptideTests.DataStreaming
 
             messageCreator = new DataStreamTestMessageCreator();
 
-            streamer = new DataStreamer(this, messageCreator, streamer2receiver_sender, this, maxPayloadSize, 4);
+            streamer = new DataStreamer(this, messageCreator, streamer2receiver_sender, this, new DefaultRateLimitSettings(), new DefaultTimeProvider(), maxPayloadSize, 4);
 
             receiver2streamer_sender = new DataStreamTestMessageSender((message) =>
             {

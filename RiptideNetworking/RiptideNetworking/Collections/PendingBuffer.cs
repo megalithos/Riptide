@@ -17,6 +17,7 @@ namespace Riptide.Collections
     internal class PendingBuffer
     {
         private byte[] buffer;
+        public int BufferSize => buffer.Length;
         private byte[] chunkStates;
         private int totalChunks;
         private int numDeliveredChunks;

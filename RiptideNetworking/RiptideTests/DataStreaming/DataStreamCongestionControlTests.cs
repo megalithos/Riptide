@@ -87,7 +87,7 @@ namespace RiptideTests.DataStreaming
 
             messageCreator = new DataStreamTestMessageCreator();
 
-            streamer = new DataStreamer(this, messageCreator, streamer2receiver_sender, this, maxPendingBufferBufferSize, 4);
+            streamer = new DataStreamer(this, messageCreator, streamer2receiver_sender, this, new DefaultRateLimitSettings(), new DefaultTimeProvider(), maxPendingBufferBufferSize, 4);
 
             receiver2streamer_sender = new DataStreamTestMessageSender((Message message) =>
             {
@@ -178,7 +178,7 @@ namespace RiptideTests.DataStreaming
         [Test]
         public void Test_HugeBufferStreamDoesNotExceedMaxCwnd_AndCwndOnlyGrows()
         {
-            streamer = new DataStreamer(this, messageCreator, streamer2receiver_sender, this, maxPendingBufferBufferSize, 4, 32);
+            streamer = new DataStreamer(this, messageCreator, streamer2receiver_sender, this, new DefaultRateLimitSettings(), new DefaultTimeProvider(), maxPendingBufferBufferSize, 4, 32);
             streamer.OnDelivered += (PendingBuffer pendingBuffer) =>
             {
                 deliveredPb = pendingBuffer;
